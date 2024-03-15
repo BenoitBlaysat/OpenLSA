@@ -1,93 +1,84 @@
 # OpenLSA
 
+OpenLSA is a Python Library developed for processing images of periodic patterns to retrieve the displacement that warps them.
+Full-field displacement maps are thus deduced from a pair of images.
+Designed for the Experimental Mechanics community, LSA is able to process optimized patterns in terms of metrological performance, such as the checkerboard one [1].
+
+An illustration of a wooden specimen, subjected to a compression load, is detailed within the file "Script_example.py". An interested reader can refer to the LSA seminal paper [2].
+
+[1] Increasing accuracy and precision of Digital Image Correlation through pattern optimization. Bomarito, G. F. and Hochhalter, J. D. and Ruggles, T. J. \& Cannon, A. H.; Optics and Lasers in Engineering; 2017 (doi: 10.1016/j.optlaseng.2016.11.005)
+
+[2] Extracting displacement and strain fields from checkerboard images with the Localized Spectrum Analysis M. Grédiac, B. Blaysat \& F. Sur; Experimental Mechanics, 2019. (doi: 10.1007/s11340-018-00439-2)
 
 
 ## Getting started
-
-To make it easy for you to get started with GitLab, here's a list of recommended next steps.
-
-Already a pro? Just edit this README.md and make it your own. Want to make it easy? [Use the template at the bottom](#editing-this-readme)!
-
-## Add your files
-
-- [ ] [Create](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#create-a-file) or [upload](https://docs.gitlab.com/ee/user/project/repository/web_editor.html#upload-a-file) files
-- [ ] [Add files using the command line](https://docs.gitlab.com/ee/gitlab-basics/add-file.html#add-a-file-using-the-command-line) or push an existing Git repository with the following command:
+OpenLSA sources are available at the [repository](https://pypi.org/project/openlsa/) or the library can be installed with pip:
 
 ```
-cd existing_repo
-git remote add origin https://gitlab.ip.uca.fr/blaysat/openlsa.git
-git branch -M main
-git push -uf origin main
+pip install OpenLSA
 ```
 
-## Integrate with your tools
+## Recommendations
+OpenLSA requires numerous Python libraries: numpy, scipy, scikit-image, opencv-python, pillow, matplotlib, and boto3.
+All dependencies are correctly managed when using the pip installation.
 
-- [ ] [Set up project integrations](https://gitlab.ip.uca.fr/blaysat/openlsa/-/settings/integrations)
+## Usage 
+A set of images and the minimal script example is provided in the [repository](https://pypi.org/project/openlsa/).
+Nevertheless, the main steps for retrieving a displacement field from a reference ref_im.tif to a current cur_im.tif are given in what follows.
 
-## Collaborate with your team
 
-- [ ] [Invite team members and collaborators](https://docs.gitlab.com/ee/user/project/members/)
-- [ ] [Create a new merge request](https://docs.gitlab.com/ee/user/project/merge_requests/creating_merge_requests.html)
-- [ ] [Automatically close issues from merge requests](https://docs.gitlab.com/ee/user/project/issues/managing_issues.html#closing-issues-automatically)
-- [ ] [Enable merge request approvals](https://docs.gitlab.com/ee/user/project/merge_requests/approvals/)
-- [ ] [Set auto-merge](https://docs.gitlab.com/ee/user/project/merge_requests/merge_when_pipeline_succeeds.html)
+### Required libraries
+```
+import numpy as np
+from PIL import Image
+from openlsa import OpenLSA
+```
 
-## Test and Deploy
+### Loading images
+```
+img_0 = np.array(Image.open("ref_im.tif"))
+img_t = np.array(Image.open("cur_im.tif"))
+```
+Images are loaded and formatted as numpy arrays.
 
-Use the built-in continuous integration in GitLab.
+### Initializing LSA & kernel
+```
+lsa = OpenLSA(img_0, verbose=True, display=True)
+kernel = my_lsa.compute_kernel(std=my_lsa.pitch().max())
+```
+The ***lsa*** class constructor directly analyses the reference image to build up LSA parameters such as the two orthogonal wave vectors characterizing its pattern.
+The ***verbose*** (respectively, ***display***) option is set to **True**, so the program, during execution, displays information in the terminal (respectively, separate figures).
+The LSA kernel is also defined in the proposed script.
+The smallest width is chosen here, with the standard deviation of the Gaussian kernel being set to the pattern period.
 
-- [ ] [Get started with GitLab CI/CD](https://docs.gitlab.com/ee/ci/quick_start/index.html)
-- [ ] [Analyze your code for known vulnerabilities with Static Application Security Testing (SAST)](https://docs.gitlab.com/ee/user/application_security/sast/)
-- [ ] [Deploy to Kubernetes, Amazon EC2, or Amazon ECS using Auto Deploy](https://docs.gitlab.com/ee/topics/autodevops/requirements.html)
-- [ ] [Use pull-based deployments for improved Kubernetes management](https://docs.gitlab.com/ee/user/clusters/agent/)
-- [ ] [Set up protected environments](https://docs.gitlab.com/ee/ci/environments/protected_environments.html)
+### Computing phases
+```
+phi_0, __ = my_lsa.compute_phases_mod(img_0, kernel)
+phi_t, __ = my_lsa.compute_phases_mod(img_t, kernel)
+```
+The ***compute_phases_mod*** method is called to compute the phase modulations associated with each image.
 
-***
+### Solving the temporal unwraping
+```
+phi_t, __ = my_lsa.temporal_unwrap(img_0, img_t, phi_0, phi_t)
+```
+The pairing of the current phase modulations ***phi_t*** to ***phi_0*** is performed by following a specific point from the reference image to the current one.
+Point selection is automatically defined.
 
-# Editing this README
+### Computing of the displacement
+```
+u_xy = my_lsa.compute_displacement(phi_0, phi_t, min_iter=6)
+```
+Finally, a fixed point algorithm is called for computing the displacement field from both phase modulations ***phi_0*** and ***phi_t***.
+Displacement ***u_xy*** is formatted as a complex number, its real (respectively, imaginary) part corresponding to the component in the row (respectively, column) direction.
 
-When you're ready to make this README your own, just edit this file and use the handy template below (or feel free to structure it however you want - this is just a starting point!). Thanks to [makeareadme.com](https://www.makeareadme.com/) for this template.
-
-## Suggestions for a good README
-
-Every project is different, so consider which of these sections apply to yours. The sections used in the template are suggestions for most open source projects. Also keep in mind that while a README can be too long and detailed, too long is better than too short. If you think your README is too long, consider utilizing another form of documentation rather than cutting out information.
-
-## Name
-Choose a self-explaining name for your project.
-
-## Description
-Let people know what your project can do specifically. Provide context and add a link to any reference visitors might be unfamiliar with. A list of Features or a Background subsection can also be added here. If there are alternatives to your project, this is a good place to list differentiating factors.
-
-## Badges
-On some READMEs, you may see small images that convey metadata, such as whether or not all the tests are passing for the project. You can use Shields to add some to your README. Many services also have instructions for adding a badge.
-
-## Visuals
-Depending on what you are making, it can be a good idea to include screenshots or even a video (you'll frequently see GIFs rather than actual videos). Tools like ttygif can help, but check out Asciinema for a more sophisticated method.
-
-## Installation
-Within a particular ecosystem, there may be a common way of installing things, such as using Yarn, NuGet, or Homebrew. However, consider the possibility that whoever is reading your README is a novice and would like more guidance. Listing specific steps helps remove ambiguity and gets people to using your project as quickly as possible. If it only runs in a specific context like a particular programming language version or operating system or has dependencies that have to be installed manually, also add a Requirements subsection.
-
-## Usage
-Use examples liberally, and show the expected output if you can. It's helpful to have inline the smallest example of usage that you can demonstrate, while providing links to more sophisticated examples if they are too long to reasonably include in the README.
-
-## Support
-Tell people where they can go to for help. It can be any combination of an issue tracker, a chat room, an email address, etc.
 
 ## Roadmap
-If you have ideas for releases in the future, it is a good idea to list them in the README.
-
-## Contributing
-State if you are open to contributions and what your requirements are for accepting them.
-
-For people who want to make changes to your project, it's helpful to have some documentation on how to get started. Perhaps there is a script that they should run or some environment variables that they need to set. Make these steps explicit. These instructions could also be useful to your future self.
-
-You can also document commands to lint the code or run tests. These steps help to ensure high code quality and reduce the likelihood that the changes inadvertently break something. Having instructions for running tests is especially helpful if it requires external setup, such as starting a Selenium server for testing in a browser.
-
-## Authors and acknowledgment
-Show your appreciation to those who have contributed to the project.
+Short term developments will consist of:
+- Extending the displacement calculation to take into account camera model.
+- Adding the deconvolution algorithm.
 
 ## License
-For open source projects, say how it is licensed.
+These python codes can be used for non-profit academic research only.
+They are distributed under the terms of the GNU General Public License v3.
 
-## Project status
-If you have run out of energy or time for your project, put a note at the top of the README saying that development has slowed down or stopped completely. Someone may choose to fork your project or volunteer to step in as a maintainer or owner, allowing your project to keep going. You can also make an explicit request for maintainers.

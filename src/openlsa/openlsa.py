@@ -376,10 +376,10 @@ class OpenLSA():
             print("WARNING - temporal unwrapping \n"
                   "     Disflow and pattern matching provided different results : \n"
                   f"         DisFlow           = [{point1[0]:d}, {point1[1]:d}] "
-                  f"-> [{point2[0][1]:0.2f}, {point2[0][1]:0.2f}] "
+                  f"-> [{point2[0][0]:0.2f}, {point2[0][1]:0.2f}] "
                   f"-> SSD = {ssd[0]:0.2f}\n"
                   f"         Pattern Matching  = [{point1[0]:d}, {point1[1]:d}] "
-                  f"-> [{point2[1][1]:0.2f}, {point2[1][1]:0.2f}] "
+                  f"-> [{point2[1][0]:0.2f}, {point2[1][1]:0.2f}] "
                   f"-> SSD = {ssd[1]:0.2f}")
 
             # The solution corresponds to the one of smallest residual

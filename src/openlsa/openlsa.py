@@ -369,8 +369,8 @@ class OpenLSA():
             ssd = [np.linalg.norm(img1[int(point1[0])-15:int(point1[0])+15,
                                        int(point1[1])-15:int(point1[1])+15]
                                   - img2[int(point2[i][0])-15:int(point2[i][0])+15,
-                                         int(point2[i][1])-15:int(point2[i][1])+15]
-                                  for i in range(2))]
+                                         int(point2[i][1])-15:int(point2[i][1])+15])
+                   for i in range(2)]
 
             print("WARNING - temporal unwrapping \n"
                   "     Disflow and pattern matching provided different results : \n"

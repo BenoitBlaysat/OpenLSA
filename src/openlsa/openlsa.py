@@ -288,8 +288,9 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
+        self.check_temp_unwrap(img1, point1=point1)
         if point2 is None:
-            point2, uinit = self.rough_point2point(img1, img2, point1=point1, dis_init=uinit)
+            point2, uinit = self.rough_point2point(img1, img2, dis_init=uinit)
         return self.jump_correction(phi_1, phi_2, point2), uinit
 
     def check_temp_unwrap(self, img, point1=None):

@@ -124,6 +124,7 @@ def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
         if 'Contents' in response:
             im_stack = [item['Key'] for item in response['Contents']
                         if item['Key'].lower().endswith(tuple(im_extensions))]
+            breakpoint()
             im_stack = [item for item in im_stack if im_pattern in item]
         if verbose:
             print(f"      A path to a s3 folder is given: {len(im_stack):d} images are found.")

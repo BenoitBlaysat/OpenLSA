@@ -692,7 +692,7 @@ class OpenLSA():
                   f"      │        .std(eps_22) = {stats['std_eq_eps_22']:.2E} [-]            │\n",
                   "      └───────────────────────────────────────────────┘")
 
-        return mylsa, phi_ref_av, kernel, stats
+        return mylsa, phi_ref_av, img_ref, kernel, stats
 
     @staticmethod
     def load(name):

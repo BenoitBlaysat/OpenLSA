@@ -483,7 +483,7 @@ class OpenLSA():
     def save(self, filename):
         """ Method that writes a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
-        if filename.split(".")[-1] == '.pkl':
+        if filename.split(".")[-1] == 'pkl':
             with open(filename, 'wb') as file:
                 pickle.dump({'vec_k': self.vec_k, 'roi': self.roi,
                              'pt_2_follow': self.temp_unwrap['pt_2_follow'],

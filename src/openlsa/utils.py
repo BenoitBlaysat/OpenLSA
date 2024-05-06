@@ -23,6 +23,8 @@ import numpy as np
 import cv2
 from scipy import ndimage
 import boto3
+import re
+import os
 
 
 ###############################################################################
@@ -124,10 +126,9 @@ def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
         if 'Contents' in response:
             im_stack = [item['Key'] for item in response['Contents']
                         if item['Key'].lower().endswith(tuple(im_extensions))]
-            breakpoint()
-            pattern = re.compile(r'Image_\d{4}_0\.tiff$')
-            filtered_list = [filename for filename in file_list if pattern.match(filename)]
-            im_stack = [item for item in im_stack if im_pattern in item]
+            pattern = re.compile(im_pattern)
+            im_stack = [item for item in im_stack
+                        if pattern.match(os.path.basename(os.path.splitext(item)[0]))]
         if verbose:
             print(f"      A path to a s3 folder is given: {len(im_stack):d} images are found.")
     else:

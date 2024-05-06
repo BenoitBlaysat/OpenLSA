@@ -186,14 +186,14 @@ class Phases():
         for iloop in range(len(self)):
             tmp_vec_k[:, iloop] = self.phases[iloop].vec_k
             tmp_data[:, :, iloop] = self.phases[iloop].data
-        np.savez_compressed(filename.split(".")[0] + 'npz',
+        np.savez_compressed(filename.split(".")[0] + '.npz',
                             vec_k=tmp_vec_k,
                             data=tmp_data)
 
     @staticmethod
     def load(filename):
         """ Method that reads a .npz file and creates a Phases class"""
-        with np.load(filename.split(".")[0] + 'npz') as data:
+        with np.load(filename.split(".")[0] + '.npz') as data:
             tmp_vec_k = data['vec_k']
             tmp_data = data['data']
         tmp = Phases([Phase(tmp_data[:, :, i], tmp_vec_k[:, i].tolist()[0])

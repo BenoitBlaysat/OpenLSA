@@ -25,6 +25,7 @@ import os
 import glob
 import io
 import pickle
+from types import NoneType
 import numpy as np
 from scipy.ndimage import map_coordinates
 from PIL import Image
@@ -71,6 +72,31 @@ class OpenLSA():
                  roi_75percent=None,
                  display=False,
                  verbose=False):
+
+        # check if inputs variables are correct
+        assert img.__class__ in (NoneType, np.ndarray)
+        assert vec_k.__class__ in (NoneType, list)
+        if vec_k.__class__ == list:
+            for vec in vec_k:
+                assert isinstance(vec, complex) or isinstance(vec, np.complexfloating)
+        assert_point(pt_2_follow)
+        assert (isinstance(max_pitch, int) or isinstance(max_pitch, np.generic))
+        assert max_pitch > 0
+        assert (isinstance(min_pitch, int) or isinstance(min_pitch, np.generic))
+        assert min_pitch >= 2*np.sqrt(2)
+        assert min_pitch < max_pitch
+        assert (isinstance(init_angle, int) or isinstance(init_angle, np.generic))
+        assert roi.__class__ in (NoneType, np.ndarray)
+        if roi.__class__ == np.ndarray:
+            assert roi.dtype == bool
+            if img.__class__ == np.ndarray:
+                assert img.shape == roi.shape
+        assert template.__class__ in (NoneType, np.ndarray)
+        assert roi_75percent.__class__ in (NoneType, np.ndarray)
+        if isinstance(roi_75percent, np.ndarray):
+            assert roi_75percent.dtype == bool
+        assert isinstance(display, bool)
+        assert isinstance(verbose, bool)
 
         self.vec_k = vec_k
         self.roi = roi
@@ -203,14 +229,20 @@ class OpenLSA():
         encoded. If a component (comp) is specified, output is reduced to it."""
         if comp is None:
             return 1/np.abs(self.vec_k)
+        else:
+            assert isinstance(comp, int)
+
         return 1/np.abs(self.vec_k[comp])
 
     def angle(self, comp=None, deg=False):
         """  Method that returns the list of the angles [rad] through which the periodic pattern is
         encoded. If a component (comp) is specified, output is reduced to it.  if deg is true,
         output is given in degrees"""
+        assert isinstance(deg, bool)
         if comp is None:
             return np.angle(self.vec_k, deg=deg)
+        else:
+            assert isinstance(comp, int)
         return np.angle(self.vec_k[comp], deg=deg)
 
     def vec_dir(self, comp=None):
@@ -218,10 +250,14 @@ class OpenLSA():
         is encoded. If a component (comp) is specified, output is reduced to it."""
         if comp is None:
             return np.exp(1j*np.angle(self.vec_k))
+        else:
+            assert isinstance(comp, int)
         return np.exp(1j*np.angle(self.vec_k[comp]))
 
     def px_z(self, roi=False):
         """  Method that returns pixel coordinates, formated as complex."""
+        assert isinstance(roi, bool)
+
         if roi:
             return self.__px_z[self.roi]
         return self.__px_z
@@ -231,6 +267,9 @@ class OpenLSA():
         """ Method that computes LSA gaussian normalized kernel, of standard diviation "std"."""
         if std is None:
             std = self.pitch().max()
+        else:
+            assert std.__class__ in (int, float) or isinstance(std, np.generic)
+
         t_noy = np.ceil(4*std)
         px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy+1), np.arange(-t_noy, t_noy+1))
         kernel = np.exp(-(px_x**2+px_y**2)/(2*std**2))
@@ -242,6 +281,10 @@ class OpenLSA():
         frequency of |vec_k| and in the direction of its angle.
         vec_k is the wave vector that characterize the pattern periodicity
         kernel is the kernel used for LSA"""
+        assert isinstance(img, np.ndarray)
+        assert vec_k.__class__ is complex or isinstance(vec_k, np.complexfloating)
+        assert isinstance(kernel, np.ndarray)
+
         w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f = w_f_r + 1j*w_f_i
@@ -252,6 +295,11 @@ class OpenLSA():
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
         unwrap is an option for returning wrapped phase modulations."""
+        assert isinstance(img, np.ndarray)
+        assert kernel.__class__ in (NoneType, np.ndarray)
+        assert roi_coef.__class__ in (int, float) or isinstance(roi_coef, np.generic)
+        assert 0 < roi_coef
+        assert isinstance(unwrap, bool)
 
         if self.options['verbose']:
             print('\n Computing the phase modulations\n',
@@ -289,6 +337,19 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
+        assert isinstance(img1, np.ndarray)
+        assert isinstance(img2, np.ndarray)
+        assert img2.shape == img1.shape
+        assert isinstance(phi_1, Phases)
+        assert phi_1.shape == img1.shape
+        assert isinstance(phi_2, Phases)
+        assert phi_2.shape == img1.shape
+        assert_point(point1)
+        assert_point(point2)
+        assert uinit.__class__ in (NoneType, np.ndarray)
+        if isinstance(uinit, np.ndarray):
+            assert uinit.shape == img1.shape
+
         self.check_temp_unwrap(img1, point1=point1)
         if point2 is None:
             point2, uinit = self.rough_point2point(img1, img2, dis_init=uinit)
@@ -297,6 +358,9 @@ class OpenLSA():
     def check_temp_unwrap(self, img, point1=None):
         """ Method that checks if the features neede for the temporal unwrap have been
         initialized. If not, it runs the methods to make it."""
+        assert isinstance(img, np.ndarray)
+        assert_point(point1)
+
         if point1 is None:
             if self.temp_unwrap['pt_2_follow'] is None:
                 self.init_pt_2_follow(img)
@@ -309,6 +373,8 @@ class OpenLSA():
 
     def init_pt_2_follow(self, img):
         """ Method that defines the location of the feature to be followed accross images."""
+        assert isinstance(img, np.ndarray)
+
         blur_size = int(self.pitch().max()**3)
         roi_75percent = cv2.blur(make_it_uint8(255*self.temp_unwrap['roi_75percent']),
                                  (blur_size, blur_size))/255.
@@ -320,6 +386,8 @@ class OpenLSA():
 
     def init_template(self, img):
         """ Method that defines the feature, i.e. template, to be followed accross images."""
+        assert isinstance(img, np.ndarray)
+
         ceil_pitch = int(np.ceil(self.pitch().max()))
         width = 2*ceil_pitch
         point1 = self.temp_unwrap['pt_2_follow'].ravel()
@@ -334,6 +402,13 @@ class OpenLSA():
         displacement from img1 to img2. It is formated into a complex number, the real part
         being the displacement, in the line direction, and the imaginary part the displacement
         in the direction of the columns."""
+        assert isinstance(img1, np.ndarray)
+        assert isinstance(img2, np.ndarray)
+        assert img2.shape == img1.shape
+        assert_point(point1)
+        assert dis_init.__class__ in (NoneType, np.ndarray)
+        if isinstance(dis_init, np.ndarray):
+            assert dis_init.shape == img1.shape
 
         if self.options['verbose']:
             print('\n Estimate rough displacement for temporal unwrapping\n',
@@ -410,6 +485,11 @@ class OpenLSA():
     def jump_correction(self, phi_1, phi_2, point2, point1=None):
         """ Method that pairs the phase phi_2 to phi_1 accordlingly to the fact that point1 of
         phi_1 moved to point2 of phi_2"""
+        assert isinstance(phi_1, Phases)
+        assert isinstance(phi_2, Phases)
+        assert phi_2.shape == phi_1.shape
+        assert isinstance(point2, np.ndarray) and point2.shape == (2,)
+        assert_point(point1)
 
         if point1 is None:
             point1 = self.temp_unwrap['pt_2_follow'].astype(float)
@@ -435,6 +515,21 @@ class OpenLSA():
         max_iter: maximum number of iterations of the fixed point algorithm.
         uinit: guess for fixed point initialisation
         """
+        assert isinstance(phi_1, Phases)
+        assert isinstance(phi_2, Phases)
+        assert phi_2.shape == phi_1.shape
+        assert list_of_points.__class__ in (NoneType, np.ndarray)
+        if isinstance(list_of_points, np.ndarray):
+            if len(list_of_points) == 1:
+                assert list_of_points.shape[0] == 2
+            else:
+                assert list_of_points.shape[1] == 2
+        assert isinstance(min_iter, int)
+        assert max_iter.__class__ in (int, float) or isinstance(max_iter, np.generic)
+        assert min_iter <= max_iter
+        assert uinit.__class__ in (NoneType, np.ndarray)
+        if uinit.__class__ == np.ndarray:
+            assert uinit.shape == phi_1.shape
 
         if self.options['verbose']:
             print('\n Computing the displacement field\n', '--------------------------------')
@@ -483,6 +578,8 @@ class OpenLSA():
     def save(self, filename):
         """ Method that writes a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
+        assert isinstance(filename, str)
+
         if filename.split(".")[-1] == 'pkl':
             with open(filename, 'wb') as file:
                 pickle.dump({'vec_k': self.vec_k, 'roi': self.roi,
@@ -498,7 +595,7 @@ class OpenLSA():
     @staticmethod
     def compute_refstate_from_im_stack(im_folder=None, im_extensions='.tif', im_pattern='',
                                        im_stack=None, s3_dictionary=None,
-                                       roi_coef=0.2, kernel_width=0, **kwargs):
+                                       roi_coef=0.2, kernel_std=None, **kwargs):
         """ Often, multiple images are taken at reference state. This function extracts phase
         fields for all images, and averages them by taking into account the rigid body motion
         that might occur in between. The reference coordinate system corresponds to the one
@@ -514,6 +611,22 @@ class OpenLSA():
                              's3_bucket_name': s3_bucket_name,
                              's3_path_2_im': s3_path_2_im,
                              's3_path_2_folder': s3_path_2_folder}"""
+        assert im_folder.__class__ in (NoneType, str)
+        assert im_extensions.__class__ in (str, list)
+        if isinstance(im_extensions, list):
+            for im_extension in im_extensions:
+                assert isinstance(im_extension, str)
+        assert isinstance(im_pattern, str)
+        assert im_stack.__class__ in (NoneType, list)
+        if isinstance(im_stack, list):
+            assert isinstance(im_stack[0], np.ndarray)
+            for img in im_stack[1:]:
+                assert isinstance(img, np.ndarray)
+                assert img.shape == im_stack[0].shape
+        assert s3_dictionary.__class__ in (NoneType, dict)
+        assert roi_coef.__class__ in (int, float)
+        assert 0 < roi_coef
+        assert kernel_std.__class__ in (NoneType, int, float)
 
         if s3_dictionary is None:
             s3_dictionary = {'s3_access_key_id': None, 's3_secret_access_key': None,
@@ -561,9 +674,9 @@ class OpenLSA():
             img_ref = np.array(Image.open(im_stack[0]), dtype=float)
 
         mylsa = OpenLSA(img_ref, **kwargs)
-        if kernel_width == 0:
-            kernel_width = mylsa.pitch().max()
-        kernel = mylsa.compute_kernel(std=kernel_width)
+        if kernel_std is None:
+            kernel_std = mylsa.pitch().max()
+        kernel = mylsa.compute_kernel(std=kernel_std)
         mylsa.options['display'], mylsa.options['verbose'] = False, False
 
         if opt_display_and_verbose[1]:
@@ -698,6 +811,7 @@ class OpenLSA():
     def load(name):
         """ Method that loads a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
+        assert name.__class__ is str
         if name[-4:] == '.pkl':
             with open(name, 'rb') as file:
                 data = pickle.load(file)
@@ -709,3 +823,10 @@ class OpenLSA():
             return tmp
         print('Error - unknown extension')
         return None
+
+
+def assert_point(point):
+    """ check assertion for point """
+    assert point.__class__ in (NoneType, np.ndarray)
+    if point.__class__ == np.ndarray:
+        assert point.shape == (2,)

@@ -21,6 +21,7 @@ computing full-field displacements from images of periodic patterns. Submitted t
 """
 
 # %% Required Libraries
+from types import NoneType
 import numpy as np
 from numpy import ma
 from scipy.ndimage import map_coordinates
@@ -41,16 +42,21 @@ class Phase():
     shape = None
 
     def __init__(self, phase, vec_k):
+        """ Class constructor """
+        assert isinstance(phase, np.ndarray)
+        assert isinstance(vec_k, complex) or isinstance(vec_k, np.complexfloating)
         self.vec_k = vec_k
         self.data = phase
         self.shape = phase.shape
 
     def __add__(self, other):
         """Note that + returns a numpy array, not a Phase class"""
+        assert isinstance(other, Phase)
         return self.data + other.data
 
     def __sub__(self, other):
         """Note that + returns a numpy array, not a Phase class"""
+        assert isinstance(other, Phase)
         return self.data - other.data
 
     def copy(self):
@@ -62,11 +68,15 @@ class Phase():
         computing cost"""
         if roi is None:
             roi = np.ones(self.data.shape, dtype='bool')
+        else:
+            assert isinstance(roi, np.ndarray)
+            assert roi.dtype == bool
         phi = ma.masked_array(self.data, roi)
         self.data = np.array(unwrap_phase(phi).filled(0))
 
     def interp(self, point_yx_input, order=1):
         """ Method that interpolates the phase map."""
+        # TODO BB : continuiyng the assertions
         if isinstance(np.array(point_yx_input).ravel().tolist()[0], complex):
             point_yx = [point_yx_input.imag, point_yx_input.real]
         else:

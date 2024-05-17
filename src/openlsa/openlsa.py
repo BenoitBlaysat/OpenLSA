@@ -73,30 +73,31 @@ class OpenLSA():
                  display=False,
                  verbose=False):
 
-        # check if inputs variables are correct
-        assert img.__class__ in (NoneType, np.ndarray)
-        assert vec_k.__class__ in (NoneType, list)
-        if vec_k.__class__ == list:
+        # << ------ check if input variables are correct
+        assert isinstance(img, (NoneType, np.ndarray))
+        assert isinstance(vec_k, (NoneType, list))
+        if isinstance(vec_k, list):
             for vec in vec_k:
-                assert isinstance(vec, complex) or isinstance(vec, np.complexfloating)
+                assert isinstance(vec, (complex, np.complexfloating))
         assert_point(pt_2_follow)
-        assert (isinstance(max_pitch, int) or isinstance(max_pitch, np.generic))
+        assert isinstance(max_pitch, (int, np.generic))
         assert max_pitch > 0
-        assert (isinstance(min_pitch, int) or isinstance(min_pitch, np.generic))
+        assert isinstance(min_pitch, (int, np.generic))
         assert min_pitch >= 2*np.sqrt(2)
         assert min_pitch < max_pitch
-        assert (isinstance(init_angle, int) or isinstance(init_angle, np.generic))
-        assert roi.__class__ in (NoneType, np.ndarray)
-        if roi.__class__ == np.ndarray:
+        assert isinstance(init_angle, (int, np.generic))
+        assert isinstance(roi, (NoneType, np.ndarray))
+        if isinstance(roi, np.ndarray):
             assert roi.dtype == bool
-            if img.__class__ == np.ndarray:
+            if isinstance(img, np.ndarray):
                 assert img.shape == roi.shape
-        assert template.__class__ in (NoneType, np.ndarray)
-        assert roi_75percent.__class__ in (NoneType, np.ndarray)
+        assert isinstance(template, (NoneType, np.ndarray))
+        assert isinstance(roi_75percent, (NoneType, np.ndarray))
         if isinstance(roi_75percent, np.ndarray):
             assert roi_75percent.dtype == bool
         assert isinstance(display, bool)
         assert isinstance(verbose, bool)
+        # ------ >>
 
         self.vec_k = vec_k
         self.roi = roi
@@ -282,8 +283,10 @@ class OpenLSA():
         vec_k is the wave vector that characterize the pattern periodicity
         kernel is the kernel used for LSA"""
         assert isinstance(img, np.ndarray)
-        assert vec_k.__class__ is complex or isinstance(vec_k, np.complexfloating)
+        assert img.dtype == np.generic
+        assert isinstance(vec_k, (complex, np.complexfloating))
         assert isinstance(kernel, np.ndarray)
+        assert kernel.dtype == np.generic
 
         w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
@@ -295,9 +298,10 @@ class OpenLSA():
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
         unwrap is an option for returning wrapped phase modulations."""
-        assert isinstance(img, np.ndarray)
-        assert kernel.__class__ in (NoneType, np.ndarray)
-        assert roi_coef.__class__ in (int, float) or isinstance(roi_coef, np.generic)
+        assert isinstance(img, np.ndarray) and img.dtype == np.generic
+        assert isinstance(kernel, (NoneType, np.ndarray))
+        assert kernel.dtype == np.generic
+        assert isinstance(roi_coef, (int, float, np.generic))
         assert 0 < roi_coef
         assert isinstance(unwrap, bool)
 
@@ -337,16 +341,15 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
-        assert isinstance(img1, np.ndarray)
-        assert isinstance(img2, np.ndarray)
-        assert img2.shape == img1.shape
+        assert isinstance(img1, np.ndarray) and img1.dtype == np.generic
+        assert isinstance(img2, np.ndarray) and img2.dtype == np.generic
         assert isinstance(phi_1, Phases)
         assert phi_1.shape == img1.shape
         assert isinstance(phi_2, Phases)
         assert phi_2.shape == img1.shape
         assert_point(point1)
         assert_point(point2)
-        assert uinit.__class__ in (NoneType, np.ndarray)
+        assert isinstance(uinit, (NoneType, np.ndarray))
         if isinstance(uinit, np.ndarray):
             assert uinit.shape == img1.shape
 
@@ -359,6 +362,7 @@ class OpenLSA():
         """ Method that checks if the features neede for the temporal unwrap have been
         initialized. If not, it runs the methods to make it."""
         assert isinstance(img, np.ndarray)
+        assert img.dtype == np.generic
         assert_point(point1)
 
         if point1 is None:
@@ -374,6 +378,7 @@ class OpenLSA():
     def init_pt_2_follow(self, img):
         """ Method that defines the location of the feature to be followed accross images."""
         assert isinstance(img, np.ndarray)
+        assert img.dtype == np.generic
 
         blur_size = int(self.pitch().max()**3)
         roi_75percent = cv2.blur(make_it_uint8(255*self.temp_unwrap['roi_75percent']),
@@ -387,6 +392,7 @@ class OpenLSA():
     def init_template(self, img):
         """ Method that defines the feature, i.e. template, to be followed accross images."""
         assert isinstance(img, np.ndarray)
+        assert img.dtype == np.generic
 
         ceil_pitch = int(np.ceil(self.pitch().max()))
         width = 2*ceil_pitch
@@ -406,7 +412,7 @@ class OpenLSA():
         assert isinstance(img2, np.ndarray)
         assert img2.shape == img1.shape
         assert_point(point1)
-        assert dis_init.__class__ in (NoneType, np.ndarray)
+        assert isinstance(dis_init, (NoneType, np.ndarray))
         if isinstance(dis_init, np.ndarray):
             assert dis_init.shape == img1.shape
 
@@ -518,17 +524,17 @@ class OpenLSA():
         assert isinstance(phi_1, Phases)
         assert isinstance(phi_2, Phases)
         assert phi_2.shape == phi_1.shape
-        assert list_of_points.__class__ in (NoneType, np.ndarray)
+        assert isinstance(list_of_points, (NoneType, np.ndarray))
         if isinstance(list_of_points, np.ndarray):
             if len(list_of_points) == 1:
                 assert list_of_points.shape[0] == 2
             else:
                 assert list_of_points.shape[1] == 2
         assert isinstance(min_iter, int)
-        assert max_iter.__class__ in (int, float) or isinstance(max_iter, np.generic)
+        assert isinstance(max_iter, (int, float, np.generic))
         assert min_iter <= max_iter
-        assert uinit.__class__ in (NoneType, np.ndarray)
-        if uinit.__class__ == np.ndarray:
+        assert isinstance(uinit, (NoneType, np.ndarray))
+        if isinstance(uinit, np.ndarray):
             assert uinit.shape == phi_1.shape
 
         if self.options['verbose']:
@@ -611,22 +617,22 @@ class OpenLSA():
                              's3_bucket_name': s3_bucket_name,
                              's3_path_2_im': s3_path_2_im,
                              's3_path_2_folder': s3_path_2_folder}"""
-        assert im_folder.__class__ in (NoneType, str)
-        assert im_extensions.__class__ in (str, list)
+        assert isinstance(im_folder, (NoneType, str))
+        assert isinstance(im_extensions, (str, list))
         if isinstance(im_extensions, list):
             for im_extension in im_extensions:
                 assert isinstance(im_extension, str)
         assert isinstance(im_pattern, str)
-        assert im_stack.__class__ in (NoneType, list)
+        assert isinstance(im_stack, (NoneType, list))
         if isinstance(im_stack, list):
             assert isinstance(im_stack[0], np.ndarray)
             for img in im_stack[1:]:
                 assert isinstance(img, np.ndarray)
                 assert img.shape == im_stack[0].shape
-        assert s3_dictionary.__class__ in (NoneType, dict)
-        assert roi_coef.__class__ in (int, float)
+        assert isinstance(s3_dictionary, (NoneType, dict))
+        assert isinstance(roi_coef, (int, float))
         assert 0 < roi_coef
-        assert kernel_std.__class__ in (NoneType, int, float)
+        assert isinstance(kernel_std, (NoneType, int, float))
 
         if s3_dictionary is None:
             s3_dictionary = {'s3_access_key_id': None, 's3_secret_access_key': None,
@@ -811,7 +817,7 @@ class OpenLSA():
     def load(name):
         """ Method that loads a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
-        assert name.__class__ is str
+        assert isinstance(name, str)
         if name[-4:] == '.pkl':
             with open(name, 'rb') as file:
                 data = pickle.load(file)
@@ -827,6 +833,6 @@ class OpenLSA():
 
 def assert_point(point):
     """ check assertion for point """
-    assert point.__class__ in (NoneType, np.ndarray)
-    if point.__class__ == np.ndarray:
+    assert isinstance(point, (NoneType, np.ndarray))
+    if isinstance(point, np.ndarray):
         assert point.shape == (2,)

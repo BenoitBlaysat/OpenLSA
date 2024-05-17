@@ -299,8 +299,6 @@ class OpenLSA():
         roi_coef defines the thresshold used for defining the region of interest
         unwrap is an option for returning wrapped phase modulations."""
         assert isinstance(img, np.ndarray) and img.dtype == np.generic
-        assert isinstance(kernel, (NoneType, np.ndarray))
-        assert kernel.dtype == np.generic
         assert isinstance(roi_coef, (int, float, np.generic))
         assert 0 < roi_coef
         assert isinstance(unwrap, bool)
@@ -309,7 +307,10 @@ class OpenLSA():
             print('\n Computing the phase modulations\n',
                   '-------------------------------')
         if kernel is None:
-            self.compute_kernel()
+            kernel = self.compute_kernel()
+        else:
+            assert isinstance(kernel, np.ndarray) and kernel.dtype == np.generic
+
         if self.__px_z is None:
             self.__def_px_loc(img.shape)
 

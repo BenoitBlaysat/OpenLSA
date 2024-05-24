@@ -32,10 +32,12 @@ from PIL import Image
 import cv2
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import ScalarFormatter
 
 from openlsa.utils import make_it_uint8
 from openlsa.utils import scal_prod, axy_2_a01, a01_2_axy, compute_rbm, estimate_u, reject_outliers
 from openlsa.utils import provide_s3_path
+from openlsa.utils import assert_point, assert_array
 from openlsa.phase import Phase, Phases
 
 
@@ -269,7 +271,7 @@ class OpenLSA():
         if std is None:
             std = self.pitch().max()
         else:
-            assert std.__class__ in (int, float) or isinstance(std, np.generic)
+            assert isinstance(std, (int, float, np.generic))
 
         t_noy = np.ceil(4*std)
         px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy+1), np.arange(-t_noy, t_noy+1))
@@ -282,11 +284,9 @@ class OpenLSA():
         frequency of |vec_k| and in the direction of its angle.
         vec_k is the wave vector that characterize the pattern periodicity
         kernel is the kernel used for LSA"""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert_array(img)
         assert isinstance(vec_k, (complex, np.complexfloating))
-        assert isinstance(kernel, np.ndarray)
-        assert kernel.dtype == np.generic
+        assert_array(kernel)
 
         w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
@@ -298,7 +298,7 @@ class OpenLSA():
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
         unwrap is an option for returning wrapped phase modulations."""
-        assert isinstance(img, np.ndarray) and img.dtype == np.generic
+        assert_array(img)
         assert isinstance(roi_coef, (int, float, np.generic))
         assert 0 < roi_coef
         assert isinstance(unwrap, bool)
@@ -309,7 +309,8 @@ class OpenLSA():
         if kernel is None:
             kernel = self.compute_kernel()
         else:
-            assert isinstance(kernel, np.ndarray) and kernel.dtype == np.generic
+            assert isinstance(kernel, np.ndarray) \
+                and isinstance(kernel.item(0), (float, int, np.generic))
 
         if self.__px_z is None:
             self.__def_px_loc(img.shape)
@@ -342,8 +343,9 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
-        assert isinstance(img1, np.ndarray) and img1.dtype == np.generic
-        assert isinstance(img2, np.ndarray) and img2.dtype == np.generic
+        assert_array(img1)
+        assert_array(img2)
+        assert img2.shape == img1.shape
         assert isinstance(phi_1, Phases)
         assert phi_1.shape == img1.shape
         assert isinstance(phi_2, Phases)
@@ -362,8 +364,7 @@ class OpenLSA():
     def check_temp_unwrap(self, img, point1=None):
         """ Method that checks if the features neede for the temporal unwrap have been
         initialized. If not, it runs the methods to make it."""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert_array(img)
         assert_point(point1)
 
         if point1 is None:
@@ -378,8 +379,7 @@ class OpenLSA():
 
     def init_pt_2_follow(self, img):
         """ Method that defines the location of the feature to be followed accross images."""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert_array(img)
 
         blur_size = int(self.pitch().max()**3)
         roi_75percent = cv2.blur(make_it_uint8(255*self.temp_unwrap['roi_75percent']),
@@ -392,8 +392,7 @@ class OpenLSA():
 
     def init_template(self, img):
         """ Method that defines the feature, i.e. template, to be followed accross images."""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert_array(img)
 
         ceil_pitch = int(np.ceil(self.pitch().max()))
         width = 2*ceil_pitch
@@ -409,8 +408,8 @@ class OpenLSA():
         displacement from img1 to img2. It is formated into a complex number, the real part
         being the displacement, in the line direction, and the imaginary part the displacement
         in the direction of the columns."""
-        assert isinstance(img1, np.ndarray)
-        assert isinstance(img2, np.ndarray)
+        assert_array(img1)
+        assert_array(img2)
         assert img2.shape == img1.shape
         assert_point(point1)
         assert isinstance(dis_init, (NoneType, np.ndarray))
@@ -465,10 +464,6 @@ class OpenLSA():
                   f"-> [{point2[1][0]:0.2f}, {point2[1][1]:0.2f}] "
                   f"-> SSD = {ssd[1]:0.2f}")
 
-            # The solution corresponds to the one of smallest residual
-            if ssd[0] > ssd[1]:
-                point2 = point2.reverse()
-
         if self.options['display']:
 
             __, fig_ax = plt.subplots(3)
@@ -486,6 +481,11 @@ class OpenLSA():
                              cmap='gray', vmin=0, vmax=2**(round(np.log2(img1.max())))-1)
             plt.tight_layout()
             plt.show()
+
+        # The solution corresponds to the one of smallest residual
+        if np.linalg.norm(point2[1] - point2[0]) > 1:
+            if ssd[0] > ssd[1]:
+                point2 = point2[::-1]
 
         return point2[0], flow
 
@@ -601,6 +601,7 @@ class OpenLSA():
     # %% extra function
     @staticmethod
     def compute_refstate_from_im_stack(im_folder=None, im_extensions='.tif', im_pattern='',
+                                       im_crop=None,
                                        im_stack=None, s3_dictionary=None,
                                        roi_coef=0.2, kernel_std=None, **kwargs):
         """ Often, multiple images are taken at reference state. This function extracts phase
@@ -630,6 +631,13 @@ class OpenLSA():
             for img in im_stack[1:]:
                 assert isinstance(img, np.ndarray)
                 assert img.shape == im_stack[0].shape
+        assert isinstance(im_crop, (NoneType, list, np.ndarray))
+        if im_crop is not None:
+            if isinstance(im_crop, list):
+                assert len(im_crop) == 4
+                assert [isinstance(item, int) for item in im_crop]
+            else:
+                assert im_crop.shape[0] == 4
         assert isinstance(s3_dictionary, (NoneType, dict))
         assert isinstance(roi_coef, (int, float))
         assert 0 < roi_coef
@@ -680,6 +688,9 @@ class OpenLSA():
         else:
             img_ref = np.array(Image.open(im_stack[0]), dtype=float)
 
+        if im_crop is not None:
+            img_ref = img_ref[im_crop[0]:im_crop[1], im_crop[2]:im_crop[3]]
+
         mylsa = OpenLSA(img_ref, **kwargs)
         if kernel_std is None:
             kernel_std = mylsa.pitch().max()
@@ -690,14 +701,14 @@ class OpenLSA():
             print(f"      Step 1/{len(im_stack)}")
             print('        Computing phase modulations')
 
-        phi_ref, mods = mylsa.compute_phases_mod(img_ref, kernel, roi_coef=roi_coef)
+        phi_ref, __ = mylsa.compute_phases_mod(img_ref, kernel, roi_coef=roi_coef)
         phi_ref_av = phi_ref.copy()
         for comp in [0, 1]:
             phi_ref_av[comp].data[:] = phi_ref_av[comp].data[:]/len(im_stack)
 
         # let's compute a equivalent pixel wise modulus -> used for defining a masked area
-        mod = sum(mods[i]**2 for i in range(len(mods)))*mylsa.roi
-        loc_roi = ~(cv2.blur((255*(mod <= (0.5**2)*mod.max())).astype('uint8'), (25, 25)) > 0)
+        loc_roi = (cv2.filter2D(mylsa.roi.astype(float), -1,
+                                np.ones((25, 25))/25**2, borderType=cv2.BORDER_CONSTANT) > 0.99)
         nb_pixels = np.sum(loc_roi)
         var_coef = 1 + 1/(len(im_stack)-1)
         coord_z = mylsa.px_z(roi=True)
@@ -713,7 +724,8 @@ class OpenLSA():
                  'var_eps_12': np.zeros(nb_pixels),
                  'var_eps_22': np.zeros(nb_pixels),
                  'std_eq_u1': 0., 'std_eq_u2': 0.,
-                 'std_eq_eps_11': 0., 'std_eq_eps_12': 0., 'std_eq_eps_22': 0.}
+                 'std_eq_eps_11': 0., 'std_eq_eps_12': 0., 'std_eq_eps_22': 0.,
+                 'roi': loc_roi}
 
         for i, img_name in enumerate(im_stack[1:]):
             if opt_display_and_verbose[1]:
@@ -725,6 +737,10 @@ class OpenLSA():
                                    dtype=float)
             else:
                 img_loc = np.array(Image.open(img_name), dtype=float)
+
+            if im_crop is not None:
+                img_loc = img_loc[im_crop[0]:im_crop[1], im_crop[2]:im_crop[3]]
+
             phi_loc = mylsa.compute_phases_mod(img_loc, kernel)[0]
             phi_loc, __ = mylsa.temporal_unwrap(img_ref, img_loc, phi_ref, phi_loc)
             uxy_loc = mylsa.compute_displacement(phi_ref, phi_loc)
@@ -773,44 +789,75 @@ class OpenLSA():
         mylsa.options['verbose'] = opt_display_and_verbose[1]
 
         if mylsa.options['display']:
+            formatter = ScalarFormatter(useMathText=True)
+            formatter.set_powerlimits((-3, 3))
             for comp in ['u1', 'u2', 'eps_11', 'eps_12', 'eps_22']:
                 __, fig_ax = plt.subplots(2)
                 # histo
-                fig_ax[0].hist(stats[f"var_{comp}"], bins=100, density=True)
+                fig_ax[0].hist(np.sqrt(stats[f"var_{comp}"]), bins=100, density=True)
                 fig_ax[0].set_yscale('log')
                 if comp[0] == 'u':
-                    fig_ax[0].set_xlabel(f"Variance of {comp} [px]")
+                    fig_ax[0].set_xlabel(f"Standard deviation of {comp} [px]")
                 else:
-                    fig_ax[0].set_xlabel(f"Variance of {comp} [-]")
-                fig_ax[0].set_ylabel("Frequency [%]")
+                    fig_ax[0].set_xlabel(f"Standard deviation of \u03B5_{comp[-2:]} [-]")
+                fig_ax[0].set_ylabel("Counts [-]")
                 fig_ax[0].grid(visible=True)
+                fig_ax[0].xaxis.set_major_formatter(formatter)
                 # map
                 fig_ax[1].imshow(img_ref, alpha=0.8)
                 tmp = np.zeros(img_ref.shape) + np.nan
-                tmp[loc_roi] = stats[f"var_{comp}"]
+                tmp[loc_roi] = np.sqrt(stats[f"var_{comp}"])
                 fig_im = fig_ax[1].imshow(tmp)
                 fig_ax[1].set_xlabel("position along $e_1$ [px]")
                 fig_ax[1].set_ylabel("position along $e_2$ [px]")
                 divider = make_axes_locatable(fig_ax[1])
                 cax = divider.append_axes("right", size="5%", pad=0.05)
                 cbar = plt.colorbar(fig_im, cax=cax)
+                cbar.ax.yaxis.set_major_formatter(formatter)
                 if comp[0] == 'u':
-                    cbar.set_label(f"Variance of {comp} [px]")
+                    cbar.set_label(f"Standard deviation of {comp} [px]")
                 else:
-                    cbar.set_label(f"Variance of {comp} [-]")
+                    cbar.set_label(f"Standard deviation of \u03B5_{comp[-2:]} [-]")
                 plt.show(block=False)
                 plt.tight_layout()
 
+        std_u1 = stats['std_eq_u1']
+        std_u2 = stats['std_eq_u2']
+        std_e11 = stats['std_eq_eps_11']
+        std_e22 = stats['std_eq_eps_22']
+        std_e12 = stats['std_eq_eps_12']
+        lr_ue = np.pi*np.sqrt(-2/np.log(0.9))*mylsa.pitch().mean()
+        mei_u = lr_ue*np.max([std_u1, std_u2])
+        mei_e = lr_ue**2*np.max([std_e11, std_e12, std_e22])
         if mylsa.options['verbose']:
-            print("       ┌───────────────────────────────────────────────┐\n",
-                  "      │  Considering these 'averaged' reference phase │\n",
-                  "      │ modulations, expected equivalent stds will be │\n",
-                  f"      │        .std(u1) = {stats['std_eq_u1']:.2E} [px]               │\n",
-                  f"      │        .std(u2) = {stats['std_eq_u2']:.2E} [px]               │\n",
-                  f"      │        .std(eps_11) = {stats['std_eq_eps_11']:.2E} [-]            │\n",
-                  f"      │        .std(eps_12) = {stats['std_eq_eps_12']:.2E} [-]            │\n",
-                  f"      │        .std(eps_22) = {stats['std_eq_eps_22']:.2E} [-]            │\n",
-                  "      └───────────────────────────────────────────────┘")
+            print("       ┌───────────────────────────────────────────────────────────────────┐\n",
+                  "      │                                                                   │\n",
+                  "      │      Considering this image stack, the following metrological     │\n",
+                  "      │      performances are estimated:                                  │\n",
+                  "      │                                                                   │\n",
+                  "      │        . Measurement resolutions:                                 │\n",
+                  f"      │             - Displacement: \u03C3(u_1) = {std_u1:0.2E} [px]        ",
+                  "       │\n",
+                  f"      │                             \u03C3(u_2) = {std_u2:0.2E} [px]        ",
+                  "       │\n",
+                  f"      │             - Strain: \u03C3(\u03B5_11) = {std_e11:0.2E} [-]        ",
+                  "             │\n",
+                  f"      │                       \u03C3(\u03B5_22) = {std_e22:0.2E} [-]        ",
+                  "             │\n",
+                  f"      │                       \u03C3(\u03B5_12) = {std_e12:0.2E} [-]        ",
+                  "             │\n",
+                  "      │                                                                   │\n",
+                  "      │        . Spatial resolution (for 10% bias):                       │\n",
+                  f"      │             l_10% = {lr_ue:1.2E} [px]                               ",
+                  " │\n",
+                  "      │                                                                   │\n",
+                  "      │        . Metrological Efficiency Indicator (for 10% bias):        │\n",
+                  f"      │             - Displacement: MEI(u) = {mei_u:0.2E} [px^2]            ",
+                  " │\n",
+                  f"      │             - Strain: MEI(\u03B5) = {mei_e:0.2E} [px]               ",
+                  "      │\n",
+                  "      │                                                                   │\n",
+                  "      └───────────────────────────────────────────────────────────────────┘")
 
         return mylsa, phi_ref_av, img_ref, kernel, stats
 
@@ -830,10 +877,3 @@ class OpenLSA():
             return tmp
         print('Error - unknown extension')
         return None
-
-
-def assert_point(point):
-    """ check assertion for point """
-    assert isinstance(point, (NoneType, np.ndarray))
-    if isinstance(point, np.ndarray):
-        assert point.shape == (2,)

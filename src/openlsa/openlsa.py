@@ -269,7 +269,7 @@ class OpenLSA():
         if std is None:
             std = self.pitch().max()
         else:
-            assert std.__class__ in (int, float) or isinstance(std, np.generic)
+            assert isinstance(std, (int, float, np.generic))
 
         t_noy = np.ceil(4*std)
         px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy+1), np.arange(-t_noy, t_noy+1))
@@ -282,11 +282,10 @@ class OpenLSA():
         frequency of |vec_k| and in the direction of its angle.
         vec_k is the wave vector that characterize the pattern periodicity
         kernel is the kernel used for LSA"""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert isinstance(img, np.ndarray) and isinstance(img.item(0), (int, float, np.generic))
         assert isinstance(vec_k, (complex, np.complexfloating))
-        assert isinstance(kernel, np.ndarray)
-        assert kernel.dtype == np.generic
+        assert isinstance(kernel, np.ndarray) \
+            and isinstance(kernel.item(0), (int, float, np.generic))
 
         w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
@@ -298,7 +297,7 @@ class OpenLSA():
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
         unwrap is an option for returning wrapped phase modulations."""
-        assert isinstance(img, np.ndarray) and img.dtype == np.generic
+        assert isinstance(img, np.ndarray) and isinstance(img.item(0), (int, float, np.generic))
         assert isinstance(roi_coef, (int, float, np.generic))
         assert 0 < roi_coef
         assert isinstance(unwrap, bool)
@@ -309,7 +308,8 @@ class OpenLSA():
         if kernel is None:
             kernel = self.compute_kernel()
         else:
-            assert isinstance(kernel, np.ndarray) and kernel.dtype == np.generic
+            assert isinstance(kernel, np.ndarray) \
+                and isinstance(kernel.item(0), (int, float, np.generic))
 
         if self.__px_z is None:
             self.__def_px_loc(img.shape)
@@ -342,8 +342,8 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
-        assert isinstance(img1, np.ndarray) and img1.dtype == np.generic
-        assert isinstance(img2, np.ndarray) and img2.dtype == np.generic
+        assert isinstance(img1, np.ndarray) and isinstance(img1.item(0), (int, float, np.generic))
+        assert isinstance(img2, np.ndarray) and isinstance(img2.item(0), (int, float, np.generic))
         assert isinstance(phi_1, Phases)
         assert phi_1.shape == img1.shape
         assert isinstance(phi_2, Phases)
@@ -362,8 +362,7 @@ class OpenLSA():
     def check_temp_unwrap(self, img, point1=None):
         """ Method that checks if the features neede for the temporal unwrap have been
         initialized. If not, it runs the methods to make it."""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert isinstance(img, np.ndarray) and isinstance(img.item(0), (int, float, np.generic))
         assert_point(point1)
 
         if point1 is None:
@@ -378,8 +377,7 @@ class OpenLSA():
 
     def init_pt_2_follow(self, img):
         """ Method that defines the location of the feature to be followed accross images."""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert isinstance(img, np.ndarray) and isinstance(img.item(0), (int, float, np.generic))
 
         blur_size = int(self.pitch().max()**3)
         roi_75percent = cv2.blur(make_it_uint8(255*self.temp_unwrap['roi_75percent']),
@@ -392,8 +390,7 @@ class OpenLSA():
 
     def init_template(self, img):
         """ Method that defines the feature, i.e. template, to be followed accross images."""
-        assert isinstance(img, np.ndarray)
-        assert img.dtype == np.generic
+        assert isinstance(img, np.ndarray) and isinstance(img.item(0), (int, float, np.generic))
 
         ceil_pitch = int(np.ceil(self.pitch().max()))
         width = 2*ceil_pitch
@@ -409,8 +406,8 @@ class OpenLSA():
         displacement from img1 to img2. It is formated into a complex number, the real part
         being the displacement, in the line direction, and the imaginary part the displacement
         in the direction of the columns."""
-        assert isinstance(img1, np.ndarray)
-        assert isinstance(img2, np.ndarray)
+        assert isinstance(img1, np.ndarray) and isinstance(img1.item(0), (int, float, np.generic))
+        assert isinstance(img2, np.ndarray) and isinstance(img2.item(0), (int, float, np.generic))
         assert img2.shape == img1.shape
         assert_point(point1)
         assert isinstance(dis_init, (NoneType, np.ndarray))

@@ -25,6 +25,7 @@ from scipy import ndimage
 import boto3
 import re
 import os
+from types import NoneType
 
 
 ###############################################################################
@@ -45,8 +46,12 @@ def a01_2_axy(vec01, a01):
     """ Compute given vector a01 (expressed in basis vec01) in basis (ex, ey)"""
     assert isinstance(vec01, (list, np.ndarray))
     assert len(vec01) == 2
+<<<<<<< HEAD
     assert isinstance(a01, np.ndarray)
     assert isinstance(a01.item(0), (int, float, np.generic, complex, np.complexfloating))
+=======
+    assert_array(a01)
+>>>>>>> 374e4526c546d61267561c2827a53fc802e5b016
     assert len(a01.shape) > 1 and a01.shape[1] == 2
 
     return a01[:, 0]*vec01[0] + a01[:, 1]*vec01[1]
@@ -54,9 +59,15 @@ def a01_2_axy(vec01, a01):
 
 def axy_2_a01(vec01, axy):
     """ Compute given vector axy (ex, ey) in basis vec01"""
+<<<<<<< HEAD
     assert isinstance(vec01, (list, np.ndarray)) and len(vec01) == 2
     assert isinstance(axy, np.ndarray)
     assert isinstance(axy.item(0), (int, float, np.generic, complex, np.complexfloating))
+=======
+    assert isinstance(vec01, (list, np.ndarray))
+    assert len(vec01) == 2
+    assert_array(axy)
+>>>>>>> 374e4526c546d61267561c2827a53fc802e5b016
 
     op_00, op_01, op_10, op_11 = vec01[0].real, vec01[1].real, vec01[0].imag, vec01[1].imag
     det_op = op_00*op_11-op_01*op_10
@@ -67,13 +78,10 @@ def axy_2_a01(vec01, axy):
 
 def compute_rbm(disp, coord_x, coord_y):
     """ Computing the RBM part of a displacement"""
-    assert isinstance(disp, np.ndarray)
-    assert disp.dtype in (np.generic, np.complexfloating)
-    assert isinstance(coord_x, np.ndarray)
-    assert coord_x.dtype == np.generic
+    assert_array(disp)
+    assert_array(coord_x)
+    assert_array(coord_y)
     assert coord_x.shape == disp.shape
-    assert isinstance(coord_y, np.ndarray)
-    assert coord_y.dtype == np.generic
     assert coord_y.shape == disp.shape
 
     coord_x = (coord_x - coord_x.mean())/(2*(coord_x.max()-coord_x.min()))
@@ -90,8 +98,7 @@ def compute_rbm(disp, coord_x, coord_y):
 
 def reject_outliers(data, bandwitch=3):
     """ Removing outliers"""
-    assert isinstance(data, np.ndarray)
-    assert data.dtype == np.generic
+    assert_array(data)
     assert isinstance(bandwitch, (int, float, np.generic))
     assert bandwitch > 0
 
@@ -104,8 +111,13 @@ def reject_outliers(data, bandwitch=3):
 def estimate_u(img1, img2, filter_size=None, dis_init=None):
     """ This function estimates the displacement that warps image img1 into image img2 using the
     Dense Inverse Search optical flow algorithm from the OpenCV Python library """
+<<<<<<< HEAD
     assert isinstance(img1, np.ndarray) and isinstance(img1.item(0), (int, float, np.generic))
     assert isinstance(img2, np.ndarray) and isinstance(img2.item(0), (int, float, np.generic))
+=======
+    assert_array(img1)
+    assert_array(img2)
+>>>>>>> 374e4526c546d61267561c2827a53fc802e5b016
     assert img2.shape == img1.shape
     # optical flow will be needed, so it is initialized
     dis = cv2.DISOpticalFlow_create()
@@ -134,7 +146,11 @@ def warp_flow(img, flow):
 
 def make_it_uint8(img):
     """ This function format input image img into 8 bits depth"""
+<<<<<<< HEAD
     assert isinstance(img, np.ndarray) and isinstance(img.item(0), (int, float, np.generic))
+=======
+    assert_array(img)
+>>>>>>> 374e4526c546d61267561c2827a53fc802e5b016
 
     return np.uint8(img*2**(8-round(np.log2(img.max()))))
 
@@ -181,12 +197,22 @@ def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
     return im_stack, s3_resource.Bucket(s3_dictionary['s3_bucket_name'])
 
 
-def __check_vec(vec):
-    assert isinstance(vec, (list, np.ndarray))
-    assert len(vec) == 2
+# %% assertion checks
+def assert_point(point):
+    """ check assertion for point """
+    assert isinstance(point, (NoneType, np.ndarray))
+    if isinstance(point, np.ndarray):
+        assert point.shape == (2,)
 
 
+<<<<<<< HEAD
 def __check_field(field):
     assert isinstance(field, np.ndarray)
     assert isinstance(field.item(0), (int, float, np.generic, complex, np.complexfloating))
     assert len(field.shape) > 1 and field.shape[1] == 2
+=======
+def assert_array(array):
+    """ check assertion for array """
+    assert isinstance(array, np.ndarray)
+    isinstance(array.item(0), (int, float, complex, np.generic, np.complexfloating))
+>>>>>>> 374e4526c546d61267561c2827a53fc802e5b016

@@ -799,7 +799,7 @@ class OpenLSA():
             formatter = ScalarFormatter(useMathText=True)
             formatter.set_powerlimits((-3, 3))
             for comp in ['u1', 'u2', 'eps_11', 'eps_12', 'eps_22']:
-                __, fig_ax = plt.subplots(2)
+                fig, fig_ax = plt.subplots(2)
                 # histo
                 fig_ax[0].hist(np.sqrt(stats[f"var_{comp}"]), bins=100, density=True)
                 fig_ax[0].set_yscale('log')
@@ -827,6 +827,7 @@ class OpenLSA():
                     cbar.set_label(f"Standard deviation of \u03B5_{comp[-2:]} [-]")
                 plt.show(block=False)
                 plt.tight_layout()
+                stats.update({'fig': fig, 'fig_ax': fig_ax})
 
         std_u1 = stats['std_eq_u1']
         std_u2 = stats['std_eq_u2']

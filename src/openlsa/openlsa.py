@@ -334,7 +334,11 @@ class OpenLSA():
             self.roi = ~loc_roi
 
         if self.temp_unwrap['roi_75percent'] is None:
-            self.temp_unwrap['roi_75percent'] = mod > (mod.max()*0.75**2)
+            border = 4*int(np.ceil(self.pitch().max()))
+            remove_border = (cv2.filter2D(np.ones(img.shape, float), -1,
+                                          np.ones((border, border))/border**2,
+                                          borderType=cv2.BORDER_CONSTANT) > 0.99)
+            self.temp_unwrap['roi_75percent'] = remove_border * (mod > (mod.max()*0.75**2))
 
         return phi, mods
 
@@ -387,13 +391,16 @@ class OpenLSA():
         img_roi = cv2.blur((img*roi_75percent).astype('uint8'),
                            (int(np.ceil(self.pitch().max())), int(np.ceil(self.pitch().max()))))
         img_roi = img_roi*self.roi
+        img_roi[-2*int(np.ceil(self.pitch().max()))+1:, :] = 0
+        img_roi[:2*int(np.ceil(self.pitch().max())), :] = 0
+        img_roi[:, -2*int(np.ceil(self.pitch().max()))+1:] = 0
+        img_roi[:, :2*int(np.ceil(self.pitch().max()))] = 0
         self.temp_unwrap['pt_2_follow'] = np.array(np.unravel_index(np.argmax(img_roi),
                                                                     img_roi.shape))
 
     def init_template(self, img):
         """ Method that defines the feature, i.e. template, to be followed accross images."""
         assert_array(img)
-
         ceil_pitch = int(np.ceil(self.pitch().max()))
         width = 2*ceil_pitch
         point1 = self.temp_unwrap['pt_2_follow'].ravel()
@@ -706,7 +713,7 @@ class OpenLSA():
         for comp in [0, 1]:
             phi_ref_av[comp].data[:] = phi_ref_av[comp].data[:]/len(im_stack)
 
-        # let's compute a equivalent pixel wise modulus -> used for defining a masked area
+        # let's compute an equivalent pixel wise modulus -> used for defining a masked area
         loc_roi = (cv2.filter2D(mylsa.roi.astype(float), -1,
                                 np.ones((25, 25))/25**2, borderType=cv2.BORDER_CONSTANT) > 0.99)
         nb_pixels = np.sum(loc_roi)

@@ -67,20 +67,18 @@ def axy_2_a01(vec01, axy):
 
 def compute_rbm(disp, coord_x, coord_y):
     """ Computing the RBM part of a displacement"""
-    assert_array(disp)
-    assert_array(coord_x)
-    assert_array(coord_y)
+    assert_array([disp, coord_x, coord_y])
     assert coord_x.shape == disp.shape
     assert coord_y.shape == disp.shape
 
     coord_x = (coord_x - coord_x.mean())/(2*(coord_x.max()-coord_x.min()))
     coord_y = (coord_y - coord_y.mean())/(2*(coord_y.max()-coord_y.min()))
-    operator = np.array([[len(coord_x), 0, np.sum(coord_x)],
-                         [0, len(coord_y), np.sum(coord_y)],
-                         [np.sum(coord_x), np.sum(coord_y), np.sum(coord_x**2+coord_y**2)]])
+    operator = np.array([[len(coord_x), 0, 0],
+                         [0, len(coord_y), 0],
+                         [0, 0, np.sum(coord_x**2+coord_y**2)]])
     right_hand_member = np.array([np.sum(disp.real),
                                   np.sum(disp.imag),
-                                  np.sum(coord_y*disp.real + coord_x*disp.imag)])
+                                  np.sum(coord_x*disp.imag + coord_y*disp.real)])
     dof = np.linalg.lstsq(operator, right_hand_member, rcond=None)[0]
     return dof[0] + 1j*dof[1] + dof[2]*(coord_y + 1j*coord_x)
 
@@ -100,8 +98,7 @@ def reject_outliers(data, bandwitch=3):
 def estimate_u(img1, img2, filter_size=None, dis_init=None):
     """ This function estimates the displacement that warps image img1 into image img2 using the
     Dense Inverse Search optical flow algorithm from the OpenCV Python library """
-    assert_array(img1)
-    assert_array(img2)
+    assert_array([img1, img2])
     assert img2.shape == img1.shape
     # optical flow will be needed, so it is initialized
     dis = cv2.DISOpticalFlow_create()
@@ -180,12 +177,20 @@ def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
 # %% assertion checks
 def assert_point(point):
     """ check assertion for point """
-    assert isinstance(point, (NoneType, np.ndarray))
-    if isinstance(point, np.ndarray):
-        assert point.shape == (2,)
+    if isinstance(point, list):
+        for elem_of_list in point:
+            assert_point(elem_of_list)
+    else:
+        assert isinstance(point, (NoneType, np.ndarray))
+        if isinstance(point, np.ndarray):
+            assert point.shape == (2,)
 
 
 def assert_array(array):
     """ check assertion for array """
-    assert isinstance(array, np.ndarray)
-    isinstance(array.item(0), (int, float, complex, np.generic, np.complexfloating))
+    if isinstance(array, list):
+        for elem_of_list in array:
+            assert_array(elem_of_list)
+    else:
+        assert isinstance(array, np.ndarray)
+        isinstance(array.item(0), (int, float, complex, np.generic, np.complexfloating))

@@ -137,7 +137,8 @@ class OpenLSA():
     # %% extra constructors
     # defining pixel coordinate system
     def __def_px_loc(self, dim):
-        px_x, px_y = np.meshgrid(np.arange(dim[1], dtype=int), np.arange(dim[0], dtype=int))
+        px_x, px_y = np.meshgrid(np.arange(dim[1], dtype=int),
+                                 np.arange(dim[0], dtype=int))
         self.__px_z = px_x + 1j*px_y
 
     # computing pattern properties, i.e. wave vectors
@@ -347,15 +348,13 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
-        assert_array(img1)
-        assert_array(img2)
+        assert_array([img1, img2])
         assert img2.shape == img1.shape
         assert isinstance(phi_1, Phases)
         assert phi_1.shape == img1.shape
         assert isinstance(phi_2, Phases)
         assert phi_2.shape == img1.shape
-        assert_point(point1)
-        assert_point(point2)
+        assert_point([point1, point2])
         assert isinstance(uinit, (NoneType, np.ndarray))
         if isinstance(uinit, np.ndarray):
             assert uinit.shape == img1.shape
@@ -699,6 +698,7 @@ class OpenLSA():
             img_ref = img_ref[im_crop[0]:im_crop[1], im_crop[2]:im_crop[3]]
 
         mylsa = OpenLSA(img_ref, **kwargs)
+        ckb_pitch = mylsa.pitch().max()
         if kernel_std is None:
             kernel_std = mylsa.pitch().max()
         kernel = mylsa.compute_kernel(std=kernel_std)
@@ -714,8 +714,12 @@ class OpenLSA():
             phi_ref_av[comp].data[:] = phi_ref_av[comp].data[:]/len(im_stack)
 
         # let's compute an equivalent pixel wise modulus -> used for defining a masked area
-        loc_roi = (cv2.filter2D(mylsa.roi.astype(float), -1,
-                                np.ones((25, 25))/25**2, borderType=cv2.BORDER_CONSTANT) > 0.99)
+        mylsa.roi = cv2.filter2D(mylsa.roi.astype(float), -1,
+                                 np.ones((int(ckb_pitch),
+                                          int(ckb_pitch)))/int(ckb_pitch)**2,
+                                 borderType=cv2.BORDER_CONSTANT) > 0.99
+        loc_roi = cv2.filter2D(mylsa.roi.astype(float), -1,
+                               np.ones((25, 25))/25**2, borderType=cv2.BORDER_CONSTANT) > 0.99
         nb_pixels = np.sum(loc_roi)
         var_coef = 1 + 1/(len(im_stack)-1)
         coord_z = mylsa.px_z(roi=True)
@@ -767,8 +771,8 @@ class OpenLSA():
 
             # here the assumption is that the roi is larger than the one considered for the noise
             # estimation ! i.e. the threshold used for defining the roi is smaller than 0.5
-            uxy_res = uxy_loc
-            uxy_res[mylsa.roi] = uxy_res[mylsa.roi]-uxy_loc_rbm
+            uxy_res = uxy_loc.copy()
+            uxy_res[mylsa.roi] -= uxy_loc_rbm
             dude2, dude1 = np.gradient(uxy_res)
 
             loc = {'u1': uxy_res[loc_roi].real,
@@ -794,7 +798,7 @@ class OpenLSA():
 
         mylsa.options['display'] = opt_display_and_verbose[0]
         mylsa.options['verbose'] = opt_display_and_verbose[1]
-
+        
         if mylsa.options['display']:
             formatter = ScalarFormatter(useMathText=True)
             formatter.set_powerlimits((-3, 3))

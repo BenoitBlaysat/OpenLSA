@@ -21,6 +21,7 @@ computing full-field displacements from images of periodic patterns. Submitted t
 """
 
 # %% Required Libraries
+import io
 import numpy as np
 from numpy import ma
 from scipy.ndimage import map_coordinates
@@ -216,9 +217,13 @@ class Phases():
     @staticmethod
     def load(filename):
         """ Method that reads a .npz file and creates a Phases class"""
-        with np.load(filename.split(".")[0] + '.npz') as data:
-            tmp_vec_k = data['vec_k']
-            tmp_data = data['data']
-        tmp = Phases([Phase(tmp_data[:, :, i], tmp_vec_k[:, i].tolist()[0])
-                      for i in range(tmp_vec_k.shape[1])])
+        assert isinstance(filename, (str, io.BytesIO))
+        if isinstance(filename, str):
+            assert filename.split(".")[-1] == '.npz'
+            data = np.load(filename.split(".")[0] + '.npz')
+        elif isinstance(filename, io.BytesIO):
+            data = np.load(filename)
+        tmp = Phases([Phase(data['data'][:, :, i],
+                            data['vec_k'][:, i].tolist()[0])
+                      for i in range(data['vec_k'].shape[1])])
         return tmp

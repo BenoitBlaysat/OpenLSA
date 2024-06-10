@@ -877,15 +877,18 @@ class OpenLSA():
     def load(name):
         """ Method that loads a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
-        assert isinstance(name, str)
-        if name[-4:] == '.pkl':
-            with open(name, 'rb') as file:
-                data = pickle.load(file)
-            tmp = OpenLSA(vec_k=data['vec_k'], roi=data['roi'],
-                          pt_2_follow=data['pt_2_follow'],
-                          template=data['template'],
-                          roi_75percent=data['roi_75percent'],
-                          display=data['display'], verbose=data['verbose'])
-            return tmp
-        print('Error - unknown extension')
-        return None
+        assert isinstance(name, (str, io.BytesIO))
+        if isinstance(name, str):
+            if name[-4:] == '.pkl':
+                with open(name, 'rb') as file:
+                    data = pickle.load(file)
+            else:
+                print('Error - unknown extension')
+                return None
+        elif isinstance(name, io.BytesIO):
+            data = pickle.load(name)
+        return OpenLSA(vec_k=data['vec_k'], roi=data['roi'],
+                       pt_2_follow=data['pt_2_follow'],
+                       template=data['template'],
+                       roi_75percent=data['roi_75percent'],
+                       display=data['display'], verbose=data['verbose'])

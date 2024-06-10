@@ -14,7 +14,7 @@ Anyone finding the python codes useful is kindly asked to cite:
 # [1] M. Grédiac, B. Blaysat, and F. Sur. Extracting displacement and strain fields from
 checkerboard images with the localized spectrum analysis. Experimental Mechanics, 59(2):207–218,
 2019.
-# [2] B. Blaysat, F. Sur, T. Jailin, A. Vinel and M. Grédiac. Open LSA: Open-source toolbox for
+# [2] B. Blaysat, F. Sur, T. Jailin, A. Vinel and M. Grédiac. Open LSA: an Open-source toolbox for
 computing full-field displacements from images of periodic patterns. Submitted to SoftwareX, 2024
 
 @author: UCA/IP - M3G - EM team
@@ -25,16 +25,20 @@ import os
 import glob
 import io
 import pickle
-import boto3
+from types import NoneType
 import numpy as np
-from numpy import ma
 from scipy.ndimage import map_coordinates
-from scipy import ndimage
 from PIL import Image
-from skimage.restoration import unwrap_phase
 import cv2
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1 import make_axes_locatable
+from matplotlib.ticker import ScalarFormatter
+
+from openlsa.utils import make_it_uint8
+from openlsa.utils import scal_prod, axy_2_a01, a01_2_axy, compute_rbm, estimate_u, reject_outliers
+from openlsa.utils import provide_s3_path
+from openlsa.utils import assert_point, assert_array
+from openlsa.phase import Phase, Phases
 
 
 # %% Class LSA
@@ -70,6 +74,32 @@ class OpenLSA():
                  roi_75percent=None,
                  display=False,
                  verbose=False):
+
+        # << ------ check if input variables are correct
+        assert isinstance(img, (NoneType, np.ndarray))
+        assert isinstance(vec_k, (NoneType, list))
+        if isinstance(vec_k, list):
+            for vec in vec_k:
+                assert isinstance(vec, (complex, np.complexfloating))
+        assert_point(pt_2_follow)
+        assert isinstance(max_pitch, (int, np.generic))
+        assert max_pitch > 0
+        assert isinstance(min_pitch, (int, np.generic))
+        assert min_pitch >= 2*np.sqrt(2)
+        assert min_pitch < max_pitch
+        assert isinstance(init_angle, (int, np.generic))
+        assert isinstance(roi, (NoneType, np.ndarray))
+        if isinstance(roi, np.ndarray):
+            assert roi.dtype == bool
+            if isinstance(img, np.ndarray):
+                assert img.shape == roi.shape
+        assert isinstance(template, (NoneType, np.ndarray))
+        assert isinstance(roi_75percent, (NoneType, np.ndarray))
+        if isinstance(roi_75percent, np.ndarray):
+            assert roi_75percent.dtype == bool
+        assert isinstance(display, bool)
+        assert isinstance(verbose, bool)
+        # ------ >>
 
         self.vec_k = vec_k
         self.roi = roi
@@ -107,7 +137,8 @@ class OpenLSA():
     # %% extra constructors
     # defining pixel coordinate system
     def __def_px_loc(self, dim):
-        px_x, px_y = np.meshgrid(np.arange(dim[1], dtype=int), np.arange(dim[0], dtype=int))
+        px_x, px_y = np.meshgrid(np.arange(dim[1], dtype=int),
+                                 np.arange(dim[0], dtype=int))
         self.__px_z = px_x + 1j*px_y
 
     # computing pattern properties, i.e. wave vectors
@@ -202,14 +233,20 @@ class OpenLSA():
         encoded. If a component (comp) is specified, output is reduced to it."""
         if comp is None:
             return 1/np.abs(self.vec_k)
+        else:
+            assert isinstance(comp, int)
+
         return 1/np.abs(self.vec_k[comp])
 
     def angle(self, comp=None, deg=False):
         """  Method that returns the list of the angles [rad] through which the periodic pattern is
         encoded. If a component (comp) is specified, output is reduced to it.  if deg is true,
         output is given in degrees"""
+        assert isinstance(deg, bool)
         if comp is None:
             return np.angle(self.vec_k, deg=deg)
+        else:
+            assert isinstance(comp, int)
         return np.angle(self.vec_k[comp], deg=deg)
 
     def vec_dir(self, comp=None):
@@ -217,10 +254,14 @@ class OpenLSA():
         is encoded. If a component (comp) is specified, output is reduced to it."""
         if comp is None:
             return np.exp(1j*np.angle(self.vec_k))
+        else:
+            assert isinstance(comp, int)
         return np.exp(1j*np.angle(self.vec_k[comp]))
 
     def px_z(self, roi=False):
         """  Method that returns pixel coordinates, formated as complex."""
+        assert isinstance(roi, bool)
+
         if roi:
             return self.__px_z[self.roi]
         return self.__px_z
@@ -230,6 +271,9 @@ class OpenLSA():
         """ Method that computes LSA gaussian normalized kernel, of standard diviation "std"."""
         if std is None:
             std = self.pitch().max()
+        else:
+            assert isinstance(std, (int, float, np.generic))
+
         t_noy = np.ceil(4*std)
         px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy+1), np.arange(-t_noy, t_noy+1))
         kernel = np.exp(-(px_x**2+px_y**2)/(2*std**2))
@@ -241,6 +285,10 @@ class OpenLSA():
         frequency of |vec_k| and in the direction of its angle.
         vec_k is the wave vector that characterize the pattern periodicity
         kernel is the kernel used for LSA"""
+        assert_array(img)
+        assert isinstance(vec_k, (complex, np.complexfloating))
+        assert_array(kernel)
+
         w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
         w_f = w_f_r + 1j*w_f_i
@@ -251,12 +299,20 @@ class OpenLSA():
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
         unwrap is an option for returning wrapped phase modulations."""
+        assert_array(img)
+        assert isinstance(roi_coef, (int, float, np.generic))
+        assert 0 < roi_coef
+        assert isinstance(unwrap, bool)
 
         if self.options['verbose']:
             print('\n Computing the phase modulations\n',
                   '-------------------------------')
         if kernel is None:
-            self.compute_kernel()
+            kernel = self.compute_kernel()
+        else:
+            assert isinstance(kernel, np.ndarray) \
+                and isinstance(kernel.item(0), (float, int, np.generic))
+
         if self.__px_z is None:
             self.__def_px_loc(img.shape)
 
@@ -279,7 +335,11 @@ class OpenLSA():
             self.roi = ~loc_roi
 
         if self.temp_unwrap['roi_75percent'] is None:
-            self.temp_unwrap['roi_75percent'] = mod > (mod.max()*0.75**2)
+            border = 4*int(np.ceil(self.pitch().max()))
+            remove_border = (cv2.filter2D(np.ones(img.shape, float), -1,
+                                          np.ones((border, border))/border**2,
+                                          borderType=cv2.BORDER_CONSTANT) > 0.99)
+            self.temp_unwrap['roi_75percent'] = remove_border * (mod > (mod.max()*0.75**2))
 
         return phi, mods
 
@@ -288,6 +348,17 @@ class OpenLSA():
         """ Method that does the temporal unwrap between two phases (from phi_1 to phi_2).
         Corresponding images are used (img1 and img2), and an initial displacement uiint can be
         provided to help the pairing process."""
+        assert_array([img1, img2])
+        assert img2.shape == img1.shape
+        assert isinstance(phi_1, Phases)
+        assert phi_1.shape == img1.shape
+        assert isinstance(phi_2, Phases)
+        assert phi_2.shape == img1.shape
+        assert_point([point1, point2])
+        assert isinstance(uinit, (NoneType, np.ndarray))
+        if isinstance(uinit, np.ndarray):
+            assert uinit.shape == img1.shape
+
         self.check_temp_unwrap(img1, point1=point1)
         if point2 is None:
             point2, uinit = self.rough_point2point(img1, img2, dis_init=uinit)
@@ -296,6 +367,9 @@ class OpenLSA():
     def check_temp_unwrap(self, img, point1=None):
         """ Method that checks if the features neede for the temporal unwrap have been
         initialized. If not, it runs the methods to make it."""
+        assert_array(img)
+        assert_point(point1)
+
         if point1 is None:
             if self.temp_unwrap['pt_2_follow'] is None:
                 self.init_pt_2_follow(img)
@@ -308,17 +382,24 @@ class OpenLSA():
 
     def init_pt_2_follow(self, img):
         """ Method that defines the location of the feature to be followed accross images."""
+        assert_array(img)
+
         blur_size = int(self.pitch().max()**3)
         roi_75percent = cv2.blur(make_it_uint8(255*self.temp_unwrap['roi_75percent']),
                                  (blur_size, blur_size))/255.
         img_roi = cv2.blur((img*roi_75percent).astype('uint8'),
                            (int(np.ceil(self.pitch().max())), int(np.ceil(self.pitch().max()))))
         img_roi = img_roi*self.roi
+        img_roi[-2*int(np.ceil(self.pitch().max()))+1:, :] = 0
+        img_roi[:2*int(np.ceil(self.pitch().max())), :] = 0
+        img_roi[:, -2*int(np.ceil(self.pitch().max()))+1:] = 0
+        img_roi[:, :2*int(np.ceil(self.pitch().max()))] = 0
         self.temp_unwrap['pt_2_follow'] = np.array(np.unravel_index(np.argmax(img_roi),
                                                                     img_roi.shape))
 
     def init_template(self, img):
         """ Method that defines the feature, i.e. template, to be followed accross images."""
+        assert_array(img)
         ceil_pitch = int(np.ceil(self.pitch().max()))
         width = 2*ceil_pitch
         point1 = self.temp_unwrap['pt_2_follow'].ravel()
@@ -333,6 +414,13 @@ class OpenLSA():
         displacement from img1 to img2. It is formated into a complex number, the real part
         being the displacement, in the line direction, and the imaginary part the displacement
         in the direction of the columns."""
+        assert_array(img1)
+        assert_array(img2)
+        assert img2.shape == img1.shape
+        assert_point(point1)
+        assert isinstance(dis_init, (NoneType, np.ndarray))
+        if isinstance(dis_init, np.ndarray):
+            assert dis_init.shape == img1.shape
 
         if self.options['verbose']:
             print('\n Estimate rough displacement for temporal unwrapping\n',
@@ -382,10 +470,6 @@ class OpenLSA():
                   f"-> [{point2[1][0]:0.2f}, {point2[1][1]:0.2f}] "
                   f"-> SSD = {ssd[1]:0.2f}")
 
-            # The solution corresponds to the one of smallest residual
-            if ssd[0] > ssd[1]:
-                point2 = point2.reverse()
-
         if self.options['display']:
 
             __, fig_ax = plt.subplots(3)
@@ -404,11 +488,21 @@ class OpenLSA():
             plt.tight_layout()
             plt.show()
 
+        # The solution corresponds to the one of smallest residual
+        if np.linalg.norm(point2[1] - point2[0]) > 1:
+            if ssd[0] > ssd[1]:
+                point2 = point2[::-1]
+
         return point2[0], flow
 
     def jump_correction(self, phi_1, phi_2, point2, point1=None):
         """ Method that pairs the phase phi_2 to phi_1 accordlingly to the fact that point1 of
         phi_1 moved to point2 of phi_2"""
+        assert isinstance(phi_1, Phases)
+        assert isinstance(phi_2, Phases)
+        assert phi_2.shape == phi_1.shape
+        assert isinstance(point2, np.ndarray) and point2.shape == (2,)
+        assert_point(point1)
 
         if point1 is None:
             point1 = self.temp_unwrap['pt_2_follow'].astype(float)
@@ -434,6 +528,21 @@ class OpenLSA():
         max_iter: maximum number of iterations of the fixed point algorithm.
         uinit: guess for fixed point initialisation
         """
+        assert isinstance(phi_1, Phases)
+        assert isinstance(phi_2, Phases)
+        assert phi_2.shape == phi_1.shape
+        assert isinstance(list_of_points, (NoneType, np.ndarray))
+        if isinstance(list_of_points, np.ndarray):
+            if len(list_of_points) == 1:
+                assert list_of_points.shape[0] == 2
+            else:
+                assert list_of_points.shape[1] == 2
+        assert isinstance(min_iter, int)
+        assert isinstance(max_iter, (int, float, np.generic))
+        assert min_iter <= max_iter
+        assert isinstance(uinit, (NoneType, np.ndarray))
+        if isinstance(uinit, np.ndarray):
+            assert uinit.shape == phi_1.shape
 
         if self.options['verbose']:
             print('\n Computing the displacement field\n', '--------------------------------')
@@ -482,7 +591,9 @@ class OpenLSA():
     def save(self, filename):
         """ Method that writes a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
-        if filename.split(".")[-1] == '.pkl':
+        assert isinstance(filename, str)
+
+        if filename.split(".")[-1] == 'pkl':
             with open(filename, 'wb') as file:
                 pickle.dump({'vec_k': self.vec_k, 'roi': self.roi,
                              'pt_2_follow': self.temp_unwrap['pt_2_follow'],
@@ -496,8 +607,9 @@ class OpenLSA():
     # %% extra function
     @staticmethod
     def compute_refstate_from_im_stack(im_folder=None, im_extensions='.tif', im_pattern='',
+                                       im_crop=None,
                                        im_stack=None, s3_dictionary=None,
-                                       roi_coef=0.2, kernel_width=0, **kwargs):
+                                       roi_coef=0.2, kernel_std=None, **kwargs):
         """ Often, multiple images are taken at reference state. This function extracts phase
         fields for all images, and averages them by taking into account the rigid body motion
         that might occur in between. The reference coordinate system corresponds to the one
@@ -513,6 +625,29 @@ class OpenLSA():
                              's3_bucket_name': s3_bucket_name,
                              's3_path_2_im': s3_path_2_im,
                              's3_path_2_folder': s3_path_2_folder}"""
+        assert isinstance(im_folder, (NoneType, str))
+        assert isinstance(im_extensions, (str, list))
+        if isinstance(im_extensions, list):
+            for im_extension in im_extensions:
+                assert isinstance(im_extension, str)
+        assert isinstance(im_pattern, str)
+        assert isinstance(im_stack, (NoneType, list))
+        if isinstance(im_stack, list):
+            assert isinstance(im_stack[0], np.ndarray)
+            for img in im_stack[1:]:
+                assert isinstance(img, np.ndarray)
+                assert img.shape == im_stack[0].shape
+        assert isinstance(im_crop, (NoneType, list, np.ndarray))
+        if im_crop is not None:
+            if isinstance(im_crop, list):
+                assert len(im_crop) == 4
+                assert [isinstance(item, int) for item in im_crop]
+            else:
+                assert im_crop.shape[0] == 4
+        assert isinstance(s3_dictionary, (NoneType, dict))
+        assert isinstance(roi_coef, (int, float))
+        assert 0 < roi_coef
+        assert isinstance(kernel_std, (NoneType, int, float))
 
         if s3_dictionary is None:
             s3_dictionary = {'s3_access_key_id': None, 's3_secret_access_key': None,
@@ -559,24 +694,32 @@ class OpenLSA():
         else:
             img_ref = np.array(Image.open(im_stack[0]), dtype=float)
 
+        if im_crop is not None:
+            img_ref = img_ref[im_crop[0]:im_crop[1], im_crop[2]:im_crop[3]]
+
         mylsa = OpenLSA(img_ref, **kwargs)
-        if kernel_width == 0:
-            kernel_width = mylsa.pitch().max()
-        kernel = mylsa.compute_kernel(std=kernel_width)
+        ckb_pitch = mylsa.pitch().max()
+        if kernel_std is None:
+            kernel_std = mylsa.pitch().max()
+        kernel = mylsa.compute_kernel(std=kernel_std)
         mylsa.options['display'], mylsa.options['verbose'] = False, False
 
         if opt_display_and_verbose[1]:
             print(f"      Step 1/{len(im_stack)}")
             print('        Computing phase modulations')
 
-        phi_ref, mods = mylsa.compute_phases_mod(img_ref, kernel, roi_coef=roi_coef)
+        phi_ref, __ = mylsa.compute_phases_mod(img_ref, kernel, roi_coef=roi_coef)
         phi_ref_av = phi_ref.copy()
         for comp in [0, 1]:
             phi_ref_av[comp].data[:] = phi_ref_av[comp].data[:]/len(im_stack)
 
-        # let's compute a equivalent pixel wise modulus -> used for defining a masked area
-        mod = sum(mods[i]**2 for i in range(len(mods)))*mylsa.roi
-        loc_roi = ~(cv2.blur((255*(mod <= (0.5**2)*mod.max())).astype('uint8'), (25, 25)) > 0)
+        # let's compute an equivalent pixel wise modulus -> used for defining a masked area
+        mylsa.roi = cv2.filter2D(mylsa.roi.astype(float), -1,
+                                 np.ones((int(ckb_pitch),
+                                          int(ckb_pitch)))/int(ckb_pitch)**2,
+                                 borderType=cv2.BORDER_CONSTANT) > 0.99
+        loc_roi = cv2.filter2D(mylsa.roi.astype(float), -1,
+                               np.ones((25, 25))/25**2, borderType=cv2.BORDER_CONSTANT) > 0.99
         nb_pixels = np.sum(loc_roi)
         var_coef = 1 + 1/(len(im_stack)-1)
         coord_z = mylsa.px_z(roi=True)
@@ -592,7 +735,8 @@ class OpenLSA():
                  'var_eps_12': np.zeros(nb_pixels),
                  'var_eps_22': np.zeros(nb_pixels),
                  'std_eq_u1': 0., 'std_eq_u2': 0.,
-                 'std_eq_eps_11': 0., 'std_eq_eps_12': 0., 'std_eq_eps_22': 0.}
+                 'std_eq_eps_11': 0., 'std_eq_eps_12': 0., 'std_eq_eps_22': 0.,
+                 'roi': loc_roi}
 
         for i, img_name in enumerate(im_stack[1:]):
             if opt_display_and_verbose[1]:
@@ -604,6 +748,10 @@ class OpenLSA():
                                    dtype=float)
             else:
                 img_loc = np.array(Image.open(img_name), dtype=float)
+
+            if im_crop is not None:
+                img_loc = img_loc[im_crop[0]:im_crop[1], im_crop[2]:im_crop[3]]
+
             phi_loc = mylsa.compute_phases_mod(img_loc, kernel)[0]
             phi_loc, __ = mylsa.temporal_unwrap(img_ref, img_loc, phi_ref, phi_loc)
             uxy_loc = mylsa.compute_displacement(phi_ref, phi_loc)
@@ -623,8 +771,8 @@ class OpenLSA():
 
             # here the assumption is that the roi is larger than the one considered for the noise
             # estimation ! i.e. the threshold used for defining the roi is smaller than 0.5
-            uxy_res = uxy_loc
-            uxy_res[mylsa.roi] = uxy_res[mylsa.roi]-uxy_loc_rbm
+            uxy_res = uxy_loc.copy()
+            uxy_res[mylsa.roi] -= uxy_loc_rbm
             dude2, dude1 = np.gradient(uxy_res)
 
             loc = {'u1': uxy_res[loc_roi].real,
@@ -650,348 +798,97 @@ class OpenLSA():
 
         mylsa.options['display'] = opt_display_and_verbose[0]
         mylsa.options['verbose'] = opt_display_and_verbose[1]
-
+        
         if mylsa.options['display']:
+            formatter = ScalarFormatter(useMathText=True)
+            formatter.set_powerlimits((-3, 3))
             for comp in ['u1', 'u2', 'eps_11', 'eps_12', 'eps_22']:
-                __, fig_ax = plt.subplots(2)
+                fig, fig_ax = plt.subplots(2)
                 # histo
-                fig_ax[0].hist(stats[f"var_{comp}"], bins=100, density=True)
+                fig_ax[0].hist(np.sqrt(stats[f"var_{comp}"]), bins=100, density=True)
                 fig_ax[0].set_yscale('log')
                 if comp[0] == 'u':
-                    fig_ax[0].set_xlabel(f"Variance of {comp} [px]")
+                    fig_ax[0].set_xlabel(f"Standard deviation of {comp} [px]")
                 else:
-                    fig_ax[0].set_xlabel(f"Variance of {comp} [-]")
-                fig_ax[0].set_ylabel("Frequency [%]")
+                    fig_ax[0].set_xlabel(f"Standard deviation of \u03B5_{comp[-2:]} [-]")
+                fig_ax[0].set_ylabel("Counts [-]")
                 fig_ax[0].grid(visible=True)
+                fig_ax[0].xaxis.set_major_formatter(formatter)
                 # map
                 fig_ax[1].imshow(img_ref, alpha=0.8)
                 tmp = np.zeros(img_ref.shape) + np.nan
-                tmp[loc_roi] = stats[f"var_{comp}"]
+                tmp[loc_roi] = np.sqrt(stats[f"var_{comp}"])
                 fig_im = fig_ax[1].imshow(tmp)
                 fig_ax[1].set_xlabel("position along $e_1$ [px]")
                 fig_ax[1].set_ylabel("position along $e_2$ [px]")
                 divider = make_axes_locatable(fig_ax[1])
                 cax = divider.append_axes("right", size="5%", pad=0.05)
                 cbar = plt.colorbar(fig_im, cax=cax)
+                cbar.ax.yaxis.set_major_formatter(formatter)
                 if comp[0] == 'u':
-                    cbar.set_label(f"Variance of {comp} [px]")
+                    cbar.set_label(f"Standard deviation of {comp} [px]")
                 else:
-                    cbar.set_label(f"Variance of {comp} [-]")
+                    cbar.set_label(f"Standard deviation of \u03B5_{comp[-2:]} [-]")
                 plt.show(block=False)
                 plt.tight_layout()
+                stats.update({'fig': fig, 'fig_ax': fig_ax})
 
+        std_u1 = stats['std_eq_u1']
+        std_u2 = stats['std_eq_u2']
+        std_e11 = stats['std_eq_eps_11']
+        std_e22 = stats['std_eq_eps_22']
+        std_e12 = stats['std_eq_eps_12']
+        lr_ue = np.pi*np.sqrt(-2/np.log(0.9))*mylsa.pitch().mean()
+        mei_u = lr_ue*np.max([std_u1, std_u2])
+        mei_e = lr_ue**2*np.max([std_e11, std_e12, std_e22])
         if mylsa.options['verbose']:
-            print("       ┌───────────────────────────────────────────────┐\n",
-                  "      │  Considering these 'averaged' reference phase │\n",
-                  "      │ modulations, expected equivalent stds will be │\n",
-                  f"      │        .std(u1) = {stats['std_eq_u1']:.2E} [px]               │\n",
-                  f"      │        .std(u2) = {stats['std_eq_u2']:.2E} [px]               │\n",
-                  f"      │        .std(eps_11) = {stats['std_eq_eps_11']:.2E} [-]            │\n",
-                  f"      │        .std(eps_12) = {stats['std_eq_eps_12']:.2E} [-]            │\n",
-                  f"      │        .std(eps_22) = {stats['std_eq_eps_22']:.2E} [-]            │\n",
-                  "      └───────────────────────────────────────────────┘")
+            print("       ┌───────────────────────────────────────────────────────────────────┐\n",
+                  "      │                                                                   │\n",
+                  "      │      Considering this image stack, the following metrological     │\n",
+                  "      │      performances are estimated:                                  │\n",
+                  "      │                                                                   │\n",
+                  "      │        . Measurement resolutions:                                 │\n",
+                  f"      │             - Displacement: \u03C3(u_1) = {std_u1:0.2E} [px]        ",
+                  "       │\n",
+                  f"      │                             \u03C3(u_2) = {std_u2:0.2E} [px]        ",
+                  "       │\n",
+                  f"      │             - Strain: \u03C3(\u03B5_11) = {std_e11:0.2E} [-]        ",
+                  "             │\n",
+                  f"      │                       \u03C3(\u03B5_22) = {std_e22:0.2E} [-]        ",
+                  "             │\n",
+                  f"      │                       \u03C3(\u03B5_12) = {std_e12:0.2E} [-]        ",
+                  "             │\n",
+                  "      │                                                                   │\n",
+                  "      │        . Spatial resolution (for 10% bias):                       │\n",
+                  f"      │             l_10% = {lr_ue:1.2E} [px]                               ",
+                  " │\n",
+                  "      │                                                                   │\n",
+                  "      │        . Metrological Efficiency Indicator (for 10% bias):        │\n",
+                  f"      │             - Displacement: MEI(u) = {mei_u:0.2E} [px^2]            ",
+                  " │\n",
+                  f"      │             - Strain: MEI(\u03B5) = {mei_e:0.2E} [px]               ",
+                  "      │\n",
+                  "      │                                                                   │\n",
+                  "      └───────────────────────────────────────────────────────────────────┘")
 
-        return mylsa, phi_ref_av, kernel, stats
+        return mylsa, phi_ref_av, img_ref, kernel, stats
 
     @staticmethod
     def load(name):
         """ Method that loads a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
-        if name[-4:] == '.pkl':
-            with open(name, 'rb') as file:
-                data = pickle.load(file)
-            tmp = OpenLSA(vec_k=data['vec_k'], roi=data['roi'],
-                          pt_2_follow=data['pt_2_follow'],
-                          template=data['template'],
-                          roi_75percent=data['roi_75percent'],
-                          display=data['display'], verbose=data['verbose'])
-            return tmp
-        print('Error - unknown extension')
-        return None
-
-###############################################################################
-
-
-# %% Class phase and phases
-class Phase():
-    """ Phase is a class that helps manipulate phase maps. This class has three attributes:\n
-        vec_k: wave vector along which phase has been extracted\n
-        data: extracted phase (numpy array)\n
-        shape: shape of the numpy array collecting the phase modulation"""
-
-    def __init__(self, phase, vec_k):
-        self.vec_k = vec_k
-        self.data = phase
-        self.shape = phase.shape
-
-    def __add__(self, other):
-        """Note that + returns a numpy array, not a Phase class"""
-        return self.data + other.data
-
-    def __sub__(self, other):
-        """Note that + returns a numpy array, not a Phase class"""
-        return self.data - other.data
-
-    def copy(self):
-        """ Method that copies a given Phase class"""
-        return Phase(self.data.copy(), self.vec_k.copy())
-
-    def unwrap(self, roi=None):
-        """ Method that unwraps the phase map. A region of interest can be provided to reduce
-        computing cost"""
-        if roi is None:
-            roi = np.ones(self.data.shape, dtype='bool')
-        phi = ma.masked_array(self.data, roi)
-        self.data = np.array(unwrap_phase(phi).filled(0))
-
-    def interp(self, point_yx_input, order=1):
-        """ Method that interpolates the phase map."""
-        if isinstance(np.array(point_yx_input).ravel().tolist()[0], complex):
-            point_yx = [point_yx_input.imag, point_yx_input.real]
-        else:
-            point_yx = point_yx_input
-        return Phase(map_coordinates(self.data,
-                                     np.array(point_yx).reshape([2, -1]),
-                                     order=order).ravel(), self.vec_k)
-
-    def add_corr(self, corr):
-        """ Method that add a correction to the phase map."""
-        self.data[self.data != 0] += corr.ravel()
-
-    def vec_dir(self):
-        """ Method that returns the unit vector of the vector wave assigned to the phase maps."""
-        return self.vec_k/np.abs(self.vec_k)
-
-    def format_as_xy(self):
-        """ Method that returns the phase maps as a field of vectors.
-        Complex writing style is used."""
-        return self.data*self.vec_dir()
-
-    def imshow(self, cax=None, **kwargs):
-        """ Method that returns the handle of the axis of a figure displaying the phase map"""
-        if cax is None:
-            __, cax = plt.subplots()
-        return cax.imshow(self.data, **kwargs)
-
-    def save(self, filename):
-        """ Method that writes into a .npz file a given Phase class"""
-        np.savez_compressed(filename.split(".")[0] + 'npz',
-                            vec_k=self.vec_k,
-                            data=self.data)
-
-    @staticmethod
-    def load(filename):
-        """ Method that reads a .npz file and creates a Phase class"""
-        with np.load(filename.split(".")[0] + 'npz') as data:
-            tmp = OpenLSA(data['data'], data['vec_k'])
-        return tmp
-
-
-class Phases():
-    """ Phases is a class that helps manipulate collection of phase maps. It is mainly a list of
-    Phase and it enables method propagation from the list to each of its item.\n
-    This class has two attributes:\n
-        phases: list of Phase classes\n
-        shape: shape of the any class Phase of phases"""
-
-    def __init__(self, list_of_phases):
-        self.phases = list_of_phases
-        self.shape = list_of_phases[0].shape
-
-    def __len__(self,):
-        return len(self.phases)
-
-    def __add__(self, other):
-        """Note that + returns a list of numpy array, not a Phases class"""
-        return [self.phases[i] + other.phases[i] for i in range(len(self))]
-
-    def __sub__(self, other):
-        """Note that + returns a list of numpy array, not a Phases class"""
-        return [self.phases[i] - other.phases[i] for i in range(len(self))]
-
-    def __getitem__(self, index):
-        if isinstance(index, int):
-            return self.phases[index]
-        return Phases(self.phases[index])
-
-    def copy(self):
-        """ Method that copies a given Phases class"""
-        return Phases([self.phases[i].copy() for i in range(len(self))])
-
-    def unwrap(self, roi=None):
-        """ Method that unwraps the list of phase maps.
-        A region of interest can be provided to reduce computing cost"""
-        if roi is None:
-            roi = np.ones(self.phases[0].shape, dtype='bool')
-        for i in range(len(self)):
-            self.phases[i].unwrap(roi=roi)
-
-    def interp(self, point_yx, order=1):
-        """ Method that interpolates the list of phase maps."""
-        return Phases([self[i].interp(point_yx, order=order) for i in range(len(self))])
-
-    def add_corr(self, corrs):
-        """ Method that add a correction to the list of phase maps."""
-        for i in range(len(self)):
-            self.phases[i].add_corr(corrs[i])
-
-    def vec_k(self, comp=None):
-        """ Method that returns the list of vector waves assigned to the list of phase maps."""
-        if comp is None:
-            return [self.vec_k(comp=i) for i in range(len(self))]
-        return self.phases[comp].vec_k
-
-    def vec_karray(self, comp=None):
-        """ Method that returns an array made with the list of vector waves assigned to the list
-        of phase maps."""
-        return np.array(self.vec_k(comp)).reshape(-1, 1)
-
-    def vec_dir(self, comp=None):
-        """ Method that returns the list of unit vectors associated with the vector wave assigned
-        to the phase maps."""
-        if comp is None:
-            return [self.vec_dir(comp=i) for i in range(len(self))]
-        return self.phases[comp].vec_dir()
-
-    def format_as_xy(self):
-        """ Method that returns the list of phase maps as field of vectors.
-        Complex writing style is used."""
-        return [self.phases[i].format_as_xy() for i in range(len(self))]
-
-    def save(self, filename):
-        """ Method that writes into a .npz file a given Phase class"""
-        tmp_vec_k = np.zeros([1, len(self)], complex)
-        tmp_data = np.zeros([self.shape[0], self.shape[1], len(self)])
-        for iloop in range(len(self)):
-            tmp_vec_k[:, iloop] = self.phases[iloop].vec_k
-            tmp_data[:, :, iloop] = self.phases[iloop].data
-        np.savez_compressed(filename.split(".")[0] + 'npz',
-                            vec_k=tmp_vec_k,
-                            data=tmp_data)
-
-    @staticmethod
-    def load(filename):
-        """ Method that reads a .npz file and creates a Phases class"""
-        with np.load(filename.split(".")[0] + 'npz') as data:
-            tmp_vec_k = data['vec_k']
-            tmp_data = data['data']
-        tmp = Phases([Phase(tmp_data[:, :, i], tmp_vec_k[:, i].tolist()[0])
-                      for i in range(tmp_vec_k.shape[1])])
-        return tmp
-
-###############################################################################
-
-
-# %% Usefull functions
-def scal_prod(input_1, input_2):
-    """ Scalar product"""
-    return input_1.real*input_2.real + input_1.imag*input_2.imag
-
-
-def a01_2_axy(vec01, a01):
-    """ Compute given vector a01 (expressed in basis vec01) in basis (ex, ey)"""
-    return a01[:, 0]*vec01[0] + a01[:, 1]*vec01[1]
-
-
-def axy_2_a01(vec01, axy):
-    """ Compute given vector axy (ex, ey) in basis vec01"""
-    op_00, op_01, op_10, op_11 = vec01[0].real, vec01[1].real, vec01[0].imag, vec01[1].imag
-    det_op = op_00*op_11-op_01*op_10
-    iop_00, iop_01, iop_10, iop_11 = op_11/det_op, -op_01/det_op, -op_10/det_op, op_00/det_op
-    return np.array([axy.real*iop_00 + axy.imag*iop_01,
-                     axy.real*iop_10 + axy.imag*iop_11])
-
-
-def compute_rbm(disp, coord_x, coord_y):
-    """ Computing the RBM part of a displacement"""
-    coord_x = (coord_x - coord_x.mean())/(2*(coord_x.max()-coord_x.min()))
-    coord_y = (coord_y - coord_y.mean())/(2*(coord_y.max()-coord_y.min()))
-    operator = np.array([[len(coord_x), 0, np.sum(coord_x)],
-                         [0, len(coord_y), np.sum(coord_y)],
-                         [np.sum(coord_x), np.sum(coord_y), np.sum(coord_x**2+coord_y**2)]])
-    right_hand_member = np.array([np.sum(disp.real),
-                                  np.sum(disp.imag),
-                                  np.sum(coord_y*disp.real + coord_x*disp.imag)])
-    dof = np.linalg.lstsq(operator, right_hand_member, rcond=None)[0]
-    return dof[0] + 1j*dof[1] + dof[2]*(coord_y + 1j*coord_x)
-
-
-def reject_outliers(data, bandwitch=3):
-    """ Removing outliers"""
-    return abs(data - np.nanmean(data)) < bandwitch * np.nanstd(data)
-
-###############################################################################
-
-
-# %% OpenCV functions for raw estimating of the displacement field
-def estimate_u(img1, img2, filter_size=None, dis_init=None):
-    """ This function estimates the displacement that warps image img1 into image img2 using the
-    Dense Inverse Search optical flow algorithm from the OpenCV Python library """
-    # optical flow will be needed, so it is initialized
-    dis = cv2.DISOpticalFlow_create()
-    img1_uint8 = make_it_uint8(img1)
-    img2_uint8 = make_it_uint8(img2)
-    if filter_size is not None:
-        img1_uint8 = ndimage.gaussian_filter(img1_uint8, filter_size)
-        img2_uint8 = ndimage.gaussian_filter(img2_uint8, filter_size)
-    if dis_init is not None:
-        dis_init_mat = np.zeros([img1_uint8.shape[0], img1_uint8.shape[1], 2], dtype='float32')
-        dis_init_mat[:, :, 0], dis_init_mat[:, :, 1] = dis_init.real, dis_init.imag
-        flow = dis.calc(img1_uint8, img2_uint8,  warp_flow(dis_init_mat, dis_init_mat))
-    else:
-        flow = dis.calc(img1_uint8, img2_uint8, None)
-    return flow[:, :, 0] + 1j*flow[:, :, 1]
-
-
-def warp_flow(img, flow):
-    """ This function correctly warps a displacement to correctly feed the Dense Inverse Search
-    optical flow algorithm"""
-    flow = -flow
-    flow[:, :, 0] += np.arange(flow.shape[1])
-    flow[:, :, 1] += np.arange(flow.shape[0])[:, np.newaxis]
-    return cv2.remap(img, flow, None, cv2.INTER_LINEAR)
-
-
-def make_it_uint8(img):
-    """ This function format input image img into 8 bits depth"""
-    return np.uint8(img*2**(8-round(np.log2(img.max()))))
-
-
-# %% function to open a s3 located list of images.
-def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
-    """ This function reads the s3_dictionary to provide a list of paths to a set of images"""
-    credentials_flag = False
-    if 's3_access_key_id' in s3_dictionary.keys():
-        if s3_dictionary['s3_access_key_id'] is not None:
-            credentials_flag = True
-    if 's3_access_key_id' in s3_dictionary.keys() and s3_dictionary['s3_path_2_im'] is not None:
-        im_stack = s3_dictionary['s3_path_2_im']
-    elif s3_dictionary['s3_path_2_folder'] is not None:
-        if credentials_flag:
-            s3_client = boto3.client('s3',
-                                     aws_access_key_id=s3_dictionary['s3_access_key_id'],
-                                     aws_secret_access_key=s3_dictionary['s3_secret_access_key'],
-                                     aws_session_token=s3_dictionary['s3_session_token'],
-                                     endpoint_url=s3_dictionary['s3_endpoint_url'])
-        else:
-            s3_client = boto3.client('s3', endpoint_url=s3_dictionary['s3_endpoint_url'])
-        response = s3_client.list_objects_v2(Bucket=s3_dictionary['s3_bucket_name'],
-                                             Prefix=s3_dictionary['s3_path_2_folder'])
-        if 'Contents' in response:
-            im_stack = [item['Key'] for item in response['Contents']
-                        if item['Key'].lower().endswith(tuple(im_extensions))]
-            im_stack = [item for item in im_stack if im_pattern in item]
-        if verbose:
-            print(f"      A path to a s3 folder is given: {len(im_stack):d} images are found.")
-    else:
-        print('Error: I do need a s3 path to images or at least to a folder')
-    if credentials_flag:
-        s3_resource = boto3.resource('s3',
-                                     aws_access_key_id=s3_dictionary['s3_access_key_id'],
-                                     aws_secret_access_key=s3_dictionary['s3_secret_access_key'],
-                                     aws_session_token=s3_dictionary['s3_session_token'],
-                                     endpoint_url=s3_dictionary['s3_endpoint_url'])
-    else:
-        s3_resource = boto3.resource('s3',
-                                     endpoint_url=s3_dictionary['s3_endpoint_url'])
-    return im_stack, s3_resource.Bucket(s3_dictionary['s3_bucket_name'])
+        assert isinstance(name, (str, io.BytesIO))
+        if isinstance(name, str):
+            if name[-4:] == '.pkl':
+                with open(name, 'rb') as file:
+                    data = pickle.load(file)
+            else:
+                print('Error - unknown extension')
+                return None
+        elif isinstance(name, io.BytesIO):
+            data = pickle.load(name)
+        return OpenLSA(vec_k=data['vec_k'], roi=data['roi'],
+                       pt_2_follow=data['pt_2_follow'],
+                       template=data['template'],
+                       roi_75percent=data['roi_75percent'],
+                       display=data['display'], verbose=data['verbose'])

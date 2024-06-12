@@ -25,7 +25,7 @@ from scipy import ndimage
 import boto3
 import re
 import os
-from types import NoneType
+NoneType = type(None)
 
 
 ###############################################################################

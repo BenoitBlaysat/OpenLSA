@@ -25,7 +25,6 @@ import os
 import glob
 import io
 import pickle
-from types import NoneType
 import numpy as np
 from scipy.ndimage import map_coordinates
 from PIL import Image
@@ -40,6 +39,7 @@ from openlsa.utils import provide_s3_path
 from openlsa.utils import assert_point, assert_array
 from openlsa.phase import Phase, Phases
 
+NoneType = type(None)
 
 # %% Class LSA
 class OpenLSA():

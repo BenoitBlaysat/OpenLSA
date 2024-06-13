@@ -23,6 +23,8 @@ import numpy as np
 import cv2
 from scipy import ndimage
 import boto3
+from botocore import UNSIGNED
+from botocore.client import Config
 import re
 import os
 NoneType = type(None)
@@ -134,22 +136,60 @@ def make_it_uint8(img):
 
 # %% function to open a s3 located list of images.
 def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
-    """ This function reads the s3_dictionary to provide a list of paths to a set of images"""
-    credentials_flag = False
-    if 's3_access_key_id' in s3_dictionary.keys():
-        if s3_dictionary['s3_access_key_id'] is not None:
-            credentials_flag = True
-    if 's3_access_key_id' in s3_dictionary.keys() and s3_dictionary['s3_path_2_im'] is not None:
+    """ This function reads the s3_dictionary to provide a list of paths to a set of images
+    s3_dictionary is formated as
+        . if credentials are given in a ~/.aws/config file for instance
+            s3_dictionary = {'s3_endpoint_url': s3_endpoint_url
+                             's3_bucket_name': s3_bucket_name,
+                             's3_path_2_im': s3_path_2_im,
+                             's3_path_2_folder': s3_path_2_folder}
+        . if the connection is anonymous
+            s3_dictionary = {'s3_access_key_id': 'anonymous',
+                             's3_endpoint_url': s3_endpoint_url
+                             's3_bucket_name': s3_bucket_name,
+                             's3_path_2_im': s3_path_2_im,
+                             's3_path_2_folder': s3_path_2_folder}
+        . if the credential are given by the dictionary
+            s3_dictionary = {'s3_access_key_id':ACCESS_KEY,
+                             's3_secret_access_key':SECRET_KEY,
+                             's3_session_token':SESSION_TOKEN,
+                             's3_endpoint_url': s3_endpoint_url
+                             's3_bucket_name': s3_bucket_name,
+                             's3_path_2_im': s3_path_2_im,
+                             's3_path_2_folder': s3_path_2_folder} """
+    assert isinstance(s3_dictionary, dict)
+    assert 's3_endpoint_url' in s3_dictionary
+    assert 's3_bucket_name' in s3_dictionary
+    assert 's3_path_2_im' in s3_dictionary or 's3_path_2_folder' in s3_dictionary
+
+    credentials_flag = 0
+    if 's3_access_key_id' in s3_dictionary:
+        if s3_dictionary['s3_access_key_id'] == 'anonymous':
+            credentials_flag = 1
+        else:
+            credentials_flag = 2
+
+    folder_flag = 0
+    if 's3_path_2_im' in s3_dictionary:
         im_stack = s3_dictionary['s3_path_2_im']
-    elif s3_dictionary['s3_path_2_folder'] is not None:
-        if credentials_flag:
+    else:
+        folder_flag = 1
+
+    if folder_flag == 1:
+        if credentials_flag == 0:
+            s3_client = boto3.client('s3',
+                                     endpoint_url=s3_dictionary['s3_endpoint_url'])
+        elif credentials_flag == 1:
+            s3_client = boto3.client('s3',
+                                     endpoint_url=s3_dictionary['s3_endpoint_url'],
+                                     config=Config(signature_version=UNSIGNED))
+        else:
             s3_client = boto3.client('s3',
                                      aws_access_key_id=s3_dictionary['s3_access_key_id'],
                                      aws_secret_access_key=s3_dictionary['s3_secret_access_key'],
                                      aws_session_token=s3_dictionary['s3_session_token'],
                                      endpoint_url=s3_dictionary['s3_endpoint_url'])
-        else:
-            s3_client = boto3.client('s3', endpoint_url=s3_dictionary['s3_endpoint_url'])
+
         response = s3_client.list_objects_v2(Bucket=s3_dictionary['s3_bucket_name'],
                                              Prefix=s3_dictionary['s3_path_2_folder'])
         if 'Contents' in response:
@@ -160,19 +200,22 @@ def provide_s3_path(s3_dictionary, im_extensions, im_pattern, verbose):
                         if pattern.match(os.path.basename(os.path.splitext(item)[0]))]
         if verbose:
             print(f"      A path to a s3 folder is given: {len(im_stack):d} images are found.")
+
+    if credentials_flag == 0:
+        s3_resource = boto3.resource('s3',
+                                     endpoint_url=s3_dictionary['s3_endpoint_url'])
+    elif credentials_flag == 1:
+        s3_resource = boto3.resource('s3',
+                                     endpoint_url=s3_dictionary['s3_endpoint_url'],
+                                     config=Config(signature_version=UNSIGNED))
     else:
-        print('Error: I do need a s3 path to images or at least to a folder')
-    if credentials_flag:
         s3_resource = boto3.resource('s3',
                                      aws_access_key_id=s3_dictionary['s3_access_key_id'],
                                      aws_secret_access_key=s3_dictionary['s3_secret_access_key'],
                                      aws_session_token=s3_dictionary['s3_session_token'],
                                      endpoint_url=s3_dictionary['s3_endpoint_url'])
-    else:
-        s3_resource = boto3.resource('s3',
-                                     endpoint_url=s3_dictionary['s3_endpoint_url'])
-    return im_stack, s3_resource.Bucket(s3_dictionary['s3_bucket_name'])
 
+    return im_stack, s3_resource.Bucket(s3_dictionary['s3_bucket_name'])
 
 # %% assertion checks
 def assert_point(point):

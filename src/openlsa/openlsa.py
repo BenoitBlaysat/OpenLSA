@@ -289,8 +289,13 @@ class OpenLSA():
         assert isinstance(vec_k, (complex, np.complexfloating))
         assert_array(kernel)
 
-        w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
-        w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
+        loc_kernel = cv2.flip(kernel, -1)
+        w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, loc_kernel,
+                             (loc_kernel.shape[1] - int(loc_kernel.shape[1]/2) - 1,
+                              loc_kernel.shape[0] - int(loc_kernel.shape[0]/2) - 1))
+        w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, loc_kernel,
+                             (loc_kernel.shape[1] - int(loc_kernel.shape[1]/2) - 1,
+                              loc_kernel.shape[0] - int(loc_kernel.shape[0]/2) - 1))
         w_f = w_f_r + 1j*w_f_i
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 

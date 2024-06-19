@@ -280,7 +280,7 @@ class OpenLSA():
         return kernel/np.sum(kernel)
 
     # %% LSA core functions
-    def compute_mod_arg(self, img, vec_k, kernel):
+    def compute_mod_arg_cv2(self, img, vec_k, kernel):
         """Method that computes the convolution between the kernel and the WFT taken at the
         frequency of |vec_k| and in the direction of its angle.
         vec_k is the wave vector that characterize the pattern periodicity
@@ -289,12 +289,32 @@ class OpenLSA():
         assert isinstance(vec_k, (complex, np.complexfloating))
         assert_array(kernel)
 
-        w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
-        w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
+        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
+        w_f_r = cv2.filter2D(img*ima.real, -1, kernel)
+        w_f_i = cv2.filter2D(img*ima.imag, -1, kernel)
         w_f = w_f_r + 1j*w_f_i
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
-    def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True):
+    def compute_mod_arg_reg(self, img, vec_k, kernel):
+        """Compute the convolution between the kernel and the WFT taken at the "freq_c" frequency
+        and along direction angle.
+        px_x, px_y are the pixel corrdinate of image "img", of size "img_size"
+        kernel is the kernel used for LSA
+        angle, freq_c characterize the pattern periodicity
+        size_pad, border refer to the enlarged iamge for fft"""
+        assert_array(img)
+        assert isinstance(vec_k, (complex, np.complexfloating))
+        assert_array(kernel)
+
+        size_pad = np.array(img.shape)+np.array(kernel.shape)-1
+        border = ((np.array(kernel.shape)-1+np.mod(np.array(kernel.shape)-1, 2))/2 - 1).astype(int)
+        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
+        fft2ima = np.fft.fft2(ima, size_pad)
+        w_f = np.fft.ifft2(fft2ima*np.fft.fft2(kernel, size_pad))
+        w_f = w_f[border[0]:border[0]+img.shape[0], border[1]:border[1]+img.shape[1]]
+        return np.abs(w_f), Phase(np.angle(w_f), vec_k)
+
+    def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='reg'):
         """LSA coreL return phases and magnitudes of an image for a list of wave vectors
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
@@ -317,8 +337,12 @@ class OpenLSA():
             self.__def_px_loc(img.shape)
 
         mods, phis = [None]*len(self.vec_k), [None]*len(self.vec_k)
-        for i, vec_k in enumerate(self.vec_k):
-            mods[i], phis[i] = self.compute_mod_arg(img, vec_k, kernel)
+        if conv_method == 'cv2':
+            for i, vec_k in enumerate(self.vec_k):
+                mods[i], phis[i] = self.compute_mod_arg_cv2(img, vec_k, kernel)
+        elif conv_method == 'reg':
+            for i, vec_k in enumerate(self.vec_k):
+                mods[i], phis[i] = self.compute_mod_arg_reg(img, vec_k, kernel)
         phi = Phases(phis)
 
         # let's compute a equivalent pixel wise modulus -> used for defining a masked area to

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "openlsa"
-version = "0.9.85"
+version = "0.9.86"
 description = "A LSA tool to compute full-field displacement from an image series of periodic patterns"
 authors = ["IP's Experimental Mechanics team Blaysat <expmech.ip@gmail.fr>"]
 license = "GPL-2.0-only"

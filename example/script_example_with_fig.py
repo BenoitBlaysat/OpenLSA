@@ -157,7 +157,7 @@ or (('Fig7' in FlagFig.keys()) and FlagFig['Fig7']):
              my_lsa.temp_unwrap['pt_2_follow'][0]+15,
              my_lsa.temp_unwrap['pt_2_follow'][0]-15],
             color='forestgreen',
-            linewidth=1)
+            linewidth=3)
     plt.show(block=False)
     if SaveAsPdf:
         plt.savefig("ImgRef.pdf", format="pdf", bbox_inches="tight")

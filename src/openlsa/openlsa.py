@@ -26,6 +26,7 @@ import glob
 import io
 import pickle
 import numpy as np
+from numpy.fft import fft2, ifft2
 from scipy.ndimage import map_coordinates
 from PIL import Image
 import cv2
@@ -40,6 +41,7 @@ from openlsa.utils import assert_point, assert_array
 from openlsa.phase import Phase, Phases
 
 NoneType = type(None)
+
 
 # %% Class LSA
 class OpenLSA():
@@ -280,6 +282,22 @@ class OpenLSA():
         return kernel/np.sum(kernel)
 
     # %% LSA core functions
+    def compute_mod_arg_reg(self, img, vec_k, kernel):
+        """Method that computes the convolution between the kernel and the WFT taken at the
+        frequency of |vec_k| and in the direction of its angle.
+        vec_k is the wave vector that characterize the pattern periodicity
+        kernel is the kernel used for LSA"""
+        assert_array(img)
+        assert isinstance(vec_k, (complex, np.complexfloating))
+        assert_array(kernel)
+
+        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
+        border = int(kernel.shape[0]/2)-1
+        shape = np.array(ima.shape) + 2*border
+        w_f = ifft2(fft2(ima, s=shape)*fft2(kernel, s=shape), s=shape)[border:-border,
+                                                                       border:-border]
+        return np.abs(w_f), Phase(np.angle(w_f), vec_k)
+
     def compute_mod_arg_cv2(self, img, vec_k, kernel):
         """Method that computes the convolution between the kernel and the WFT taken at the
         frequency of |vec_k| and in the direction of its angle.
@@ -290,28 +308,11 @@ class OpenLSA():
         assert_array(kernel)
 
         ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
-        w_f_r = cv2.filter2D(img*ima.real, -1, kernel)
-        w_f_i = cv2.filter2D(img*ima.imag, -1, kernel)
+        kernelo = np.block([[kernel, np.zeros((kernel.shape[0], 1))],
+                            [np.zeros((1, 1)), np.zeros((1, kernel.shape[1]))]])
+        w_f_r = cv2.filter2D(ima.real, -1, kernelo)
+        w_f_i = cv2.filter2D(ima.imag, -1, kernelo)
         w_f = w_f_r + 1j*w_f_i
-        return np.abs(w_f), Phase(np.angle(w_f), vec_k)
-
-    def compute_mod_arg_reg(self, img, vec_k, kernel):
-        """Compute the convolution between the kernel and the WFT taken at the "freq_c" frequency
-        and along direction angle.
-        px_x, px_y are the pixel corrdinate of image "img", of size "img_size"
-        kernel is the kernel used for LSA
-        angle, freq_c characterize the pattern periodicity
-        size_pad, border refer to the enlarged iamge for fft"""
-        assert_array(img)
-        assert isinstance(vec_k, (complex, np.complexfloating))
-        assert_array(kernel)
-
-        size_pad = np.array(img.shape)+np.array(kernel.shape)-1
-        border = ((np.array(kernel.shape)-1+np.mod(np.array(kernel.shape)-1, 2))/2 - 1).astype(int)
-        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
-        fft2ima = np.fft.fft2(ima, size_pad)
-        w_f = np.fft.ifft2(fft2ima*np.fft.fft2(kernel, size_pad))
-        w_f = w_f[border[0]:border[0]+img.shape[0], border[1]:border[1]+img.shape[1]]
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
     def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='reg'):

@@ -61,7 +61,8 @@ class OpenLSA():
                'verbose': None}
     temp_unwrap = {'pt_2_follow': None,
                    'template': None,
-                   'roi_75percent': None}
+                   'roi_75percent': None,
+                   'force_method': None}
     __px_z = None
 
     # %% Class constructor
@@ -72,6 +73,7 @@ class OpenLSA():
                  pt_2_follow=None,
                  template=None,
                  roi_75percent=None,
+                 pt_2_follow_method=None,
                  display=False,
                  verbose=False):
 
@@ -106,6 +108,7 @@ class OpenLSA():
         self.temp_unwrap['pt_2_follow'] = pt_2_follow
         self.temp_unwrap['template'] = template
         self.temp_unwrap['roi_75percent'] = roi_75percent
+        self.temp_unwrap['force_method'] = pt_2_follow_method
         self.options['display'] = display
         self.options['verbose'] = verbose
 
@@ -489,9 +492,20 @@ class OpenLSA():
             plt.show()
 
         # The solution corresponds to the one of smallest residual
-        if np.linalg.norm(point2[1] - point2[0]) > 1:
-            if ssd[0] > ssd[1]:
-                point2 = point2[::-1]
+        if self.temp_unwrap['force_method'] is None:
+            if np.linalg.norm(point2[1] - point2[0]) > 1:
+                if ssd[0] > ssd[1]:
+                    point2 = point2[::-1]
+        elif self.temp_unwrap['force_method'] == 'disflow':
+            point2 = point2
+            if np.linalg.norm(point2[1] - point2[0]) > 1:
+                print("     !!! Disflow method enforced")
+        elif self.temp_unwrap['force_method'] == 'pattern_matching':
+            point2 = point2[::-1]
+            if np.linalg.norm(point2[1] - point2[0]) > 1:
+                print("     !!! Pattern matching method enforced")
+        else:
+            print('Unknwon method')
 
         return point2[0], flow
 

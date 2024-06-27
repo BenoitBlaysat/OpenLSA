@@ -25,8 +25,8 @@ import os
 import glob
 import io
 import pickle
-from types import NoneType
 import numpy as np
+from numpy.fft import fft2, ifft2
 from scipy.ndimage import map_coordinates
 from PIL import Image
 import cv2
@@ -39,6 +39,8 @@ from openlsa.utils import scal_prod, axy_2_a01, a01_2_axy, compute_rbm, estimate
 from openlsa.utils import provide_s3_path
 from openlsa.utils import assert_point, assert_array
 from openlsa.phase import Phase, Phases
+
+NoneType = type(None)
 
 
 # %% Class LSA
@@ -283,7 +285,7 @@ class OpenLSA():
         return kernel/np.sum(kernel)
 
     # %% LSA core functions
-    def compute_mod_arg(self, img, vec_k, kernel):
+    def compute_mod_arg_reg(self, img, vec_k, kernel):
         """Method that computes the convolution between the kernel and the WFT taken at the
         frequency of |vec_k| and in the direction of its angle.
         vec_k is the wave vector that characterize the pattern periodicity
@@ -292,12 +294,31 @@ class OpenLSA():
         assert isinstance(vec_k, (complex, np.complexfloating))
         assert_array(kernel)
 
-        w_f_r = cv2.filter2D(img*np.cos(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
-        w_f_i = cv2.filter2D(img*np.sin(-2*np.pi*scal_prod(vec_k, self.__px_z)), -1, kernel)
+        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
+        border = int(kernel.shape[0]/2)-1
+        shape = np.array(ima.shape) + 2*border
+        w_f = ifft2(fft2(ima, s=shape)*fft2(kernel, s=shape), s=shape)[border:-border,
+                                                                       border:-border]
+        return np.abs(w_f), Phase(np.angle(w_f), vec_k)
+
+    def compute_mod_arg_cv2(self, img, vec_k, kernel):
+        """Method that computes the convolution between the kernel and the WFT taken at the
+        frequency of |vec_k| and in the direction of its angle.
+        vec_k is the wave vector that characterize the pattern periodicity
+        kernel is the kernel used for LSA"""
+        assert_array(img)
+        assert isinstance(vec_k, (complex, np.complexfloating))
+        assert_array(kernel)
+
+        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
+        kernelo = np.block([[kernel, np.zeros((kernel.shape[0], 1))],
+                            [np.zeros((1, 1)), np.zeros((1, kernel.shape[1]))]])
+        w_f_r = cv2.filter2D(ima.real, -1, kernelo)
+        w_f_i = cv2.filter2D(ima.imag, -1, kernelo)
         w_f = w_f_r + 1j*w_f_i
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
-    def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True):
+    def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='reg'):
         """LSA coreL return phases and magnitudes of an image for a list of wave vectors
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest
@@ -320,8 +341,12 @@ class OpenLSA():
             self.__def_px_loc(img.shape)
 
         mods, phis = [None]*len(self.vec_k), [None]*len(self.vec_k)
-        for i, vec_k in enumerate(self.vec_k):
-            mods[i], phis[i] = self.compute_mod_arg(img, vec_k, kernel)
+        if conv_method == 'cv2':
+            for i, vec_k in enumerate(self.vec_k):
+                mods[i], phis[i] = self.compute_mod_arg_cv2(img, vec_k, kernel)
+        elif conv_method == 'reg':
+            for i, vec_k in enumerate(self.vec_k):
+                mods[i], phis[i] = self.compute_mod_arg_reg(img, vec_k, kernel)
         phi = Phases(phis)
 
         # let's compute a equivalent pixel wise modulus -> used for defining a masked area to
@@ -891,15 +916,18 @@ class OpenLSA():
     def load(name):
         """ Method that loads a back-up class data file using the pickles format.
         filename is the name/path used to define the write down the data."""
-        assert isinstance(name, str)
-        if name[-4:] == '.pkl':
-            with open(name, 'rb') as file:
-                data = pickle.load(file)
-            tmp = OpenLSA(vec_k=data['vec_k'], roi=data['roi'],
-                          pt_2_follow=data['pt_2_follow'],
-                          template=data['template'],
-                          roi_75percent=data['roi_75percent'],
-                          display=data['display'], verbose=data['verbose'])
-            return tmp
-        print('Error - unknown extension')
-        return None
+        assert isinstance(name, (str, io.BytesIO))
+        if isinstance(name, str):
+            if name[-4:] == '.pkl':
+                with open(name, 'rb') as file:
+                    data = pickle.load(file)
+            else:
+                print('Error - unknown extension')
+                return None
+        elif isinstance(name, io.BytesIO):
+            data = pickle.load(name)
+        return OpenLSA(vec_k=data['vec_k'], roi=data['roi'],
+                       pt_2_follow=data['pt_2_follow'],
+                       template=data['template'],
+                       roi_75percent=data['roi_75percent'],
+                       display=data['display'], verbose=data['verbose'])

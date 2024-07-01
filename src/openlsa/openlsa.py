@@ -646,8 +646,7 @@ class OpenLSA():
     # %% extra function
     @staticmethod
     def compute_refstate_from_im_stack(im_folder=None, im_extensions='.tif', im_pattern='',
-                                       im_crop=None,
-                                       im_stack=None, s3_dictionary=None,
+                                       im_crop=None, im_stack=None, s3_dictionary=None,
                                        roi_coef=0.2, kernel_std=None, **kwargs):
         """ Often, multiple images are taken at reference state. This function extracts phase
         fields for all images, and averages them by taking into account the rigid body motion
@@ -837,7 +836,7 @@ class OpenLSA():
 
         mylsa.options['display'] = opt_display_and_verbose[0]
         mylsa.options['verbose'] = opt_display_and_verbose[1]
-        
+
         if mylsa.options['display']:
             formatter = ScalarFormatter(useMathText=True)
             formatter.set_powerlimits((-3, 3))

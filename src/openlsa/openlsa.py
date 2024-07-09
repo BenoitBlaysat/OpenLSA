@@ -70,7 +70,7 @@ class OpenLSA():
     # %% Class constructor
     def __init__(self, img=None,
                  vec_k=None, max_pitch=30, min_pitch=2*np.sqrt(2),
-                 init_angle=0,
+                 init_angle=0, vec_k_perp=True,
                  roi=None,
                  pt_2_follow=None,
                  template=None,
@@ -103,6 +103,7 @@ class OpenLSA():
             assert roi_75percent.dtype == bool
         assert isinstance(display, bool)
         assert isinstance(verbose, bool)
+        assert isinstance(vec_k_perp, bool)
         # ------ >>
 
         self.vec_k = vec_k
@@ -124,7 +125,8 @@ class OpenLSA():
             if vec_k is None:
                 self.__compute_vec_k(img,
                                      max_pitch=max_pitch, min_pitch=min_pitch,
-                                     init_angle=init_angle)
+                                     init_angle=init_angle,
+                                     vec_k_perp=vec_k_perp)
 
         if vec_k is not None:
             if isinstance(vec_k, list) and len(vec_k) == 2:
@@ -151,7 +153,8 @@ class OpenLSA():
                         img,
                         max_pitch=30,
                         min_pitch=2*np.sqrt(2),
-                        init_angle=0):
+                        init_angle=0,
+                        vec_k_perp=True):
         """Compute the Pitch and the Angle from the location of the peak in the spectral
         representation of a given image "img"
         "max_pitch"" refers to the highest possible pitch"""
@@ -191,11 +194,24 @@ class OpenLSA():
 
         # Keeping the one on the side of the spectral representation defined by
         # init_angle
-        angle = np.mod(np.angle(vec_k)-init_angle, np.pi/2) + init_angle
-        if angle > np.pi/2:
-            angle -= np.pi/2
-        vec_k = np.abs(vec_k)*np.exp(1j*(angle))
-        self.vec_k = [vec_k, vec_k*np.exp(1j*np.pi/2)]
+        if vec_k_perp:
+            angle = np.mod(np.angle(vec_k)-init_angle, np.pi/2) + init_angle
+            if angle > np.pi/2:
+                angle -= np.pi/2
+            vec_k = np.abs(vec_k)*np.exp(1j*(angle))
+            self.vec_k = [vec_k, vec_k*np.exp(1j*np.pi/2)]
+        else:
+            angle = np.mod(np.angle(vec_k)-init_angle, np.pi) + init_angle
+            vec_k = np.abs(vec_k)*np.exp(1j*(angle))
+            # removing found peak
+            fft_img_abs[np.sqrt((freq_x-vec_k.real)**2+(freq_y-vec_k.imag)**2) < 1/max_pitch] = 1
+            fft_img_abs[np.sqrt((freq_x+vec_k.real)**2+(freq_y+vec_k.imag)**2) < 1/max_pitch] = 1
+            # Look for the highest peak
+            loc_of_peak = np.unravel_index(np.argmax(fft_img_abs),
+                                           fft_img_abs.shape)
+            self.vec_k = [vec_k, freq_x[loc_of_peak] + 1j*freq_y[loc_of_peak]]
+            angle = np.mod(np.angle(self.vec_k[1])-init_angle, np.pi) + init_angle
+            self.vec_k[1] = np.abs(self.vec_k[1])*np.exp(1j*(angle))
 
         if self.options['display']:
             tmp = fft_img_abs.copy()

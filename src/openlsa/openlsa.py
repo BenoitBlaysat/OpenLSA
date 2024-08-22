@@ -296,7 +296,7 @@ class OpenLSA():
             assert isinstance(std, (int, float, np.generic))
 
         t_noy = np.ceil(4*std)
-        px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy+1), np.arange(-t_noy, t_noy+1))
+        px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy)+0.5, np.arange(-t_noy, t_noy)+0.5)
         kernel = np.exp(-(px_x**2+px_y**2)/(2*std**2))
         return kernel/np.sum(kernel)
 
@@ -327,14 +327,12 @@ class OpenLSA():
         assert_array(kernel)
 
         ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
-        kernelo = np.block([[kernel, np.zeros((kernel.shape[0], 1))],
-                            [np.zeros((1, 1)), np.zeros((1, kernel.shape[1]))]])
-        w_f_r = cv2.filter2D(ima.real, -1, kernelo)
-        w_f_i = cv2.filter2D(ima.imag, -1, kernelo)
+        w_f_r = cv2.filter2D(ima.real, -1, kernel)
+        w_f_i = cv2.filter2D(ima.imag, -1, kernel)
         w_f = w_f_r + 1j*w_f_i
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
-    def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='reg'):
+    def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='cv2'):
         """LSA coreL return phases and magnitudes of an image for a list of wave vectors
         kernel is the kernel used for LSA
         roi_coef defines the thresshold used for defining the region of interest

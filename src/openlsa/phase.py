@@ -28,6 +28,8 @@ from scipy.ndimage import map_coordinates
 from skimage.restoration import unwrap_phase
 import matplotlib.pyplot as plt
 from openlsa import openlsa as OpenLSA
+from openlsa.utils import compute_hessian_kernels, symmetrize_the_matrix
+import cv2
 
 
 # %% Class phase and phases
@@ -93,6 +95,24 @@ class Phase():
     def vec_dir(self):
         """ Method that returns the unit vector of the vector wave assigned to the phase maps."""
         return self.vec_k/np.abs(self.vec_k)
+
+    def deconv(self, lsa_std,
+               nb_iter=10, hessian_std=None, enlarge_data=False, filtering_fmax=0.5):
+        if hessian_std is None:
+            hessian_std = 2*lsa_std
+        if enlarge_data:
+            data_init, data_ind = symmetrize_the_matrix(self.data, factor=2)
+        else:
+            data_init = self.data.copy()
+        data = data_init.copy()
+        xhess_win, yhess_win = compute_hessian_kernels(hessian_std,
+                                                       filtering_fmax=filtering_fmax)
+        for i_iter in range(nb_iter):
+            data = data_init - (1/2)*(cv2.filter2D(data, -1, xhess_win)
+                                      + cv2.filter2D(data, -1, yhess_win))*lsa_std**2
+        if enlarge_data:
+            data = data[data_ind[0][0]:data_ind[0][1], data_ind[1][0]:data_ind[1][1]]
+        self.data = data
 
     def format_as_xy(self):
         """ Method that returns the phase maps as a field of vectors.
@@ -197,6 +217,11 @@ class Phases():
         if comp is None:
             return [self.vec_dir(comp=i) for i in range(len(self))]
         return self.phases[comp].vec_dir()
+
+    def deconv(self, lsa_std, **kwargs):
+        """ Method that deconvolves the list of phases"""
+        for i in range(len(self)):
+            self.phases[i].deconv(lsa_std, **kwargs)
 
     def format_as_xy(self):
         """ Method that returns the list of phase maps as field of vectors.

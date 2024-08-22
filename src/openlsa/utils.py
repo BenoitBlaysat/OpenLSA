@@ -93,6 +93,49 @@ def reject_outliers(data, bandwitch=3):
 
     return abs(data - np.nanmean(data)) < bandwitch * np.nanstd(data)
 
+
+def compute_hessian_kernels(hessian_std, filtering_fmax=0.5):
+    """ Compute second order derivative kernels with respect with the two image directions """
+    t_noy = np.ceil(6*hessian_std)
+    px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy)+0.5, np.arange(-t_noy, t_noy)+0.5)
+    gauss_win = np.exp(-(px_x**2+px_y**2)/(2*hessian_std**2))
+    gauss_win /= np.sum(gauss_win)
+    xhess_win = -(hessian_std**2 - px_x**2)*gauss_win/hessian_std**4
+    xhess_win -= np.sum(xhess_win)
+    yhess_win = -(hessian_std**2 - px_y**2)*gauss_win/hessian_std**4
+    yhess_win -= np.sum(yhess_win)
+    if filtering_fmax < 0.5:
+        freq_x, freq_y = np.meshgrid(np.linspace(-0.5, 0.5, xhess_win.shape[1]),
+                                     np.linspace(-0.5, 0.5, xhess_win.shape[0]),
+                                     indexing='xy')
+        ind_2_keep = np.sqrt(freq_x**2 + freq_y**2) < filtering_fmax
+        xhess_win_fft = np.real(np.fft.fftshift(np.fft.fft2(xhess_win)))
+        xhess_win = np.real(np.fft.ifft2(np.fft.fftshift(ind_2_keep * xhess_win_fft)))
+        yhess_win_fft = np.real(np.fft.fftshift(np.fft.fft2(yhess_win)))
+        yhess_win = np.real(np.fft.ifft2(np.fft.fftshift(ind_2_keep * yhess_win_fft)))
+    return xhess_win, yhess_win
+
+
+def symmetrize_the_matrix(data, factor=3):
+    """ Enlarge the given matrix adding flipped versions of it arround """
+    data_flip0 = np.flip(data, 0)[1:-1, :]
+    data_flip1 = np.flip(data, 1)[:, 1:-1]
+    data_flip2 = np.flip(data_flip0, 1)[:, 1:-1]
+    big_data = np.block([[data_flip2, data_flip0, data_flip2],
+                         [data_flip1, data, data_flip1],
+                         [data_flip2, data_flip0, data_flip2]])
+    if factor == 2:
+        index = [int(data_flip2.shape[i]/2)-1 for i in range(2)]
+        flag = np.mod(data.shape[0], 2)
+        big_data = big_data[index[0]:-index[0], index[1]:-index[1]]
+        return big_data, [index[i]
+                          + 2 + flag
+                          + np.array([0, data.shape[i]]) for i in range(2)]
+    elif factor == 3:
+        return big_data, [data_flip2.shape[i]+np.array([0, data.shape[i]]) for i in range(2)]
+    else:
+        print('Error - only factor 2 and 3 are programmed')
+
 ###############################################################################
 
 

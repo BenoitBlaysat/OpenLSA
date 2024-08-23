@@ -108,8 +108,7 @@ class Phase():
         xhess_win, yhess_win = compute_hessian_kernels(hessian_std,
                                                        filtering_fmax=filtering_fmax)
         for i_iter in range(nb_iter):
-            data = data_init - (1/2)*(cv2.filter2D(data, -1, xhess_win)
-                                      + cv2.filter2D(data, -1, yhess_win))*lsa_std**2
+            data = data_init - (1/2)*(cv2.filter2D(data, -1, xhess_win+yhess_win))*lsa_std**2
         if enlarge_data:
             data = data[data_ind[0][0]:data_ind[0][1], data_ind[1][0]:data_ind[1][1]]
         self.data = data

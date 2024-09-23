@@ -339,7 +339,7 @@ class OpenLSA():
         unwrap is an option for returning wrapped phase modulations."""
         assert_array(img)
         assert isinstance(roi_coef, (int, float, np.generic))
-        assert 0 < roi_coef
+        assert 0 <= roi_coef
         assert isinstance(unwrap, bool)
 
         if self.options['verbose']:

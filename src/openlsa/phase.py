@@ -82,9 +82,11 @@ class Phase():
         assert point_yx_input.dtype in (int, float, np.generic, np.complexfloating)
         if point_yx_input.dtype == np.complexfloating:
             point_yx_input = [point_yx_input.imag, point_yx_input.real]
-        return Phase(map_coordinates(self.data,
-                                     np.array(point_yx_input).reshape([2, -1]),
-                                     order=order).ravel(), self.vec_k)
+        # return Phase(map_coordinates(self.data,
+        #                              np.array(point_yx_input).reshape([2, -1]),
+        #                              order=order).ravel(), self.vec_k)
+        breakpoint()
+        return Phase(cv2.remap(self.data, point_yx_input[:, 0], point_yx_input[:, 1]).ravel(), self.vec_k)
 
     def add_corr(self, corr):
         """ Method that add a correction to the phase map."""

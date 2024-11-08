@@ -79,6 +79,5 @@ Short term developments will consist of:
 - Adding the deconvolution algorithm.
 
 ## License
-These python codes can be used for non-profit academic research only.
-They are distributed under the terms of the GNU General Public License v3.
+These python codes are distributed under the terms of the GNU General Public License v3.
 

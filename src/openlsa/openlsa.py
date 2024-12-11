@@ -295,8 +295,8 @@ class OpenLSA():
         else:
             assert isinstance(std, (int, float, np.generic))
 
-        t_noy = np.ceil(4*std)
-        px_x, px_y = np.meshgrid(np.arange(-t_noy, t_noy)+0.5, np.arange(-t_noy, t_noy)+0.5)
+        t_kern = np.ceil(4*std)
+        px_x, px_y = np.meshgrid(np.arange(-t_kern, t_kern+1), np.arange(-t_kern, t_kern+1))
         kernel = np.exp(-(px_x**2+px_y**2)/(2*std**2))
         return kernel/np.sum(kernel)
 
@@ -313,8 +313,8 @@ class OpenLSA():
         ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, self.__px_z))
         border = int(kernel.shape[0]/2)-1
         shape = np.array(ima.shape) + 2*border
-        w_f = ifft2(fft2(ima, s=shape)*fft2(kernel, s=shape), s=shape)[border:-border,
-                                                                       border:-border]
+        w_f = ifft2(fft2(ima, s=shape)*fft2(kernel, s=shape), s=shape)[border+1:-border+1,
+                                                                       border+1:-border+1]
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
     def compute_mod_arg_cv2(self, img, vec_k, kernel):

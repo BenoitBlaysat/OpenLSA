@@ -91,7 +91,7 @@ class OpenLSA():
         assert isinstance(min_pitch, (int, np.generic))
         assert min_pitch >= 2*np.sqrt(2)
         assert min_pitch < max_pitch
-        assert isinstance(init_angle, (int, np.generic))
+        assert isinstance(init_angle, (int, float, np.generic))
         assert isinstance(roi, (NoneType, np.ndarray))
         if isinstance(roi, np.ndarray):
             assert roi.dtype == bool
@@ -187,6 +187,9 @@ class OpenLSA():
         # removing area conducting to too small pitch
         fft_img_abs[np.sqrt(freq_x**2+freq_y**2) > 1/min_pitch] = 1
 
+        # removing area too far from init_angle
+        fft_img_abs[np.abs(np.angle(freq_x + 1j*freq_y) - init_angle) > np.pi/2] = 1
+
         # Look for the highest peak
         loc_of_peak = np.unravel_index(np.argmax(fft_img_abs),
                                        fft_img_abs.shape)
@@ -201,11 +204,11 @@ class OpenLSA():
             vec_k = np.abs(vec_k)*np.exp(1j*(angle))
             self.vec_k = [vec_k, vec_k*np.exp(1j*np.pi/2)]
         else:
-            angle = np.mod(np.angle(vec_k)-init_angle, np.pi) + init_angle
-            vec_k = np.abs(vec_k)*np.exp(1j*(angle))
+            # angle = np.mod(np.angle(vec_k)-init_angle, np.pi) + init_angle
+            # vec_k = np.abs(vec_k)*np.exp(1j*(angle))
             # removing found peak
             fft_img_abs[np.sqrt((freq_x-vec_k.real)**2+(freq_y-vec_k.imag)**2) < 1/max_pitch] = 1
-            fft_img_abs[np.sqrt((freq_x+vec_k.real)**2+(freq_y+vec_k.imag)**2) < 1/max_pitch] = 1
+            # fft_img_abs[np.sqrt((freq_x+vec_k.real)**2+(freq_y+vec_k.imag)**2) < 1/max_pitch] = 1
             # Look for the highest peak
             loc_of_peak = np.unravel_index(np.argmax(fft_img_abs),
                                            fft_img_abs.shape)
@@ -332,6 +335,21 @@ class OpenLSA():
         w_f = w_f_r + 1j*w_f_i
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
+    def compute_mod_arg_cv2_new(self, img, vec_k, kernel, m0, corr):
+        """Method that computes the convolution between the kernel and the WFT taken at the
+        frequency of |vec_k| and in the direction of its angle.
+        vec_k is the wave vector that characterize the pattern periodicity
+        kernel is the kernel used for LSA"""
+        assert_array(img)
+        assert isinstance(vec_k, (complex, np.complexfloating))
+        assert_array(kernel)
+
+        ima = img*np.exp(-1j*2*np.pi*scal_prod(vec_k, m0))
+        w_f_r = cv2.filter2D(ima.real, -1, kernel)
+        w_f_i = cv2.filter2D(ima.imag, -1, kernel)
+        w_f = w_f_r + 1j*w_f_i
+        return np.abs(w_f), Phase(np.angle(w_f) - corr, vec_k)
+
     def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='cv2'):
         """LSA coreL return phases and magnitudes of an image for a list of wave vectors
         kernel is the kernel used for LSA
@@ -361,6 +379,14 @@ class OpenLSA():
         elif conv_method == 'reg':
             for i, vec_k in enumerate(self.vec_k):
                 mods[i], phis[i] = self.compute_mod_arg_reg(img, vec_k, kernel)
+        if conv_method == 'cv2-north':
+            m01 = axy_2_a01(self.vec_dir(), np.hstack((self.__px_z.real.reshape([-1, 1]),
+                                                       self.__px_z.imag.reshape([-1, 1]))))
+            for i, vec_k in enumerate(self.vec_k):
+                vec_m0 = (m01[:, i]*self.vec_dir(i)).reshape(img.shape)
+                vec_m1 = (m01[:, 1-i]*self.vec_dir(1-i)).reshape(img.shape)
+                corr = 2*np.pi*scal_prod(vec_k, vec_m1)
+                mods[i], phis[i] = self.compute_mod_arg_cv2_new(img, vec_k, kernel, vec_m0, corr)
         phi = Phases(phis)
 
         # let's compute a equivalent pixel wise modulus -> used for defining a masked area to

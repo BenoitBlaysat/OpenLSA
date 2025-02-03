@@ -46,7 +46,7 @@ class Phase():
     def __init__(self, phase, vec_k):
         """ Class constructor """
         assert isinstance(phase, np.ndarray)
-        assert isinstance(vec_k, (complex, np.complexfloating))
+        assert isinstance(vec_k, (float, complex, np.generic, np.complexfloating))
         self.vec_k = vec_k
         self.data = phase
         self.shape = phase.shape
@@ -83,8 +83,8 @@ class Phase():
         if point_yx_input.dtype == np.complexfloating:
             point_yx_input = [point_yx_input.imag, point_yx_input.real]
         return Phase(map_coordinates(self.data,
-                                      np.array(point_yx_input).reshape([2, -1]),
-                                      order=order).ravel(), self.vec_k)
+                                     np.array(point_yx_input).reshape([2, -1]),
+                                     order=order).ravel(), self.vec_k)
         # TODO: phase interpolation using OpenCV
         # return Phase(cv2.remap(self.data, point_yx_input[0], point_yx_input[1],
         #                        cv2.INTER_LINEAR).ravel(), self.vec_k)

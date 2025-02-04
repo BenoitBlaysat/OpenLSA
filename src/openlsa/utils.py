@@ -49,9 +49,12 @@ def a01_2_axy(vec01, a01):
     assert isinstance(vec01, (list, np.ndarray))
     assert len(vec01) == 2
     assert_array(a01)
-    assert len(a01.shape) > 1 and a01.shape[1] == 2
+    assert 2 in a01.shape
 
-    return a01[:, 0]*vec01[0] + a01[:, 1]*vec01[1]
+    if a01.shape[1] == 2:
+        return aproj01_2_axy(vec01, a01.T).T
+
+    return a01[0]*vec01[0] + a01[1]*vec01[1]
 
 
 def aproj01_2_axy(vec01, a01):
@@ -63,7 +66,6 @@ def aproj01_2_axy(vec01, a01):
 
     if a01.shape[1] == 2:
         return aproj01_2_axy(vec01, a01.T).T
-
     op_00, op_10, op_01, op_11 = vec01[0].real, vec01[1].real, vec01[0].imag, vec01[1].imag
     det_op = op_00*op_11-op_01*op_10
     iop_00, iop_01, iop_10, iop_11 = op_11/det_op, -op_01/det_op, -op_10/det_op, op_00/det_op
@@ -75,7 +77,7 @@ def axy_2_a01(vec01, axy):
     assert isinstance(vec01, (list, np.ndarray))
     assert len(vec01) == 2
     assert_array(axy)
-    print(vec01)
+
     op_00, op_01, op_10, op_11 = vec01[0].real, vec01[1].real, vec01[0].imag, vec01[1].imag
     det_op = op_00*op_11-op_01*op_10
     iop_00, iop_01, iop_10, iop_11 = op_11/det_op, -op_01/det_op, -op_10/det_op, op_00/det_op

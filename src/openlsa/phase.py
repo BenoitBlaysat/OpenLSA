@@ -99,6 +99,10 @@ class Phase():
         """ Method that returns the unit vector of the vector wave assigned to the phase maps."""
         return self.vec_k/np.abs(self.vec_k)
 
+    def pitch(self):
+        """ Method that returns the pitch of the vector wave assigned to the phase maps."""
+        return 1/np.abs(self.vec_k)
+
     def deconv(self, lsa_std,
                nb_iter=10, hessian_std=None, enlarge_data=False, filtering_fmax=0.5):
         if hessian_std is None:
@@ -219,6 +223,18 @@ class Phases():
         if comp is None:
             return [self.vec_dir(comp=i) for i in range(len(self))]
         return self.phases[comp].vec_dir()
+
+    def pitch(self, comp=None):
+        """ Method that returns the list of pitch associated with the vector wave assigned
+        to the phase maps."""
+        if comp is None:
+            return [self.pitch(comp=i) for i in range(len(self))]
+        return self.phases[comp].pitch()
+
+    def pitcharray(self, comp=None):
+        """ Method that returns the list of pitch associated with the vector wave assigned
+        to the phase maps."""
+        return np.array(self.pitch(comp)).reshape(-1, 1)
 
     def deconv(self, lsa_std, **kwargs):
         """ Method that deconvolves the list of phases"""

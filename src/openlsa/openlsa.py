@@ -35,7 +35,9 @@ from mpl_toolkits.axes_grid1 import make_axes_locatable
 from matplotlib.ticker import ScalarFormatter
 
 from openlsa.utils import make_it_uint8
-from openlsa.utils import scal_prod, axy_2_a01, a01_2_axy, aproj01_2_axy, compute_rbm, estimate_u, reject_outliers
+from openlsa.utils import scal_prod, axy_2_a01, aproj01_2_axy
+from openlsa.utils import compute_rbm, estimate_u
+from openlsa.utils import reject_outliers
 from openlsa.utils import provide_s3_path
 from openlsa.utils import assert_point, assert_array
 from openlsa.phase import Phase, Phases
@@ -212,8 +214,11 @@ class OpenLSA():
             loc_of_peak = np.unravel_index(np.argmax(fft_img_abs),
                                            fft_img_abs.shape)
             self.vec_k = [vec_k, freq_x[loc_of_peak] + 1j*freq_y[loc_of_peak]]
-            angle = np.mod(np.angle(self.vec_k[1])-init_angle, np.pi) + init_angle
-            self.vec_k[1] = np.abs(self.vec_k[1])*np.exp(1j*(angle))
+            # angle = np.mod(np.angle(self.vec_k[1])-init_angle, np.pi) + init_angle
+            # self.vec_k[1] = np.abs(self.vec_k[1])*np.exp(1j*(angle))
+            if np.abs(self.angle(1) - init_angle) < np.abs(self.angle(0) - init_angle):
+                self.vec_k.reverse()
+                self.vec_k[1] *= np.exp(1j*np.pi)
 
         if self.options['display']:
             tmp = fft_img_abs.copy()
@@ -299,7 +304,8 @@ class OpenLSA():
 
         t_kern = np.ceil(4*std)
         px_x, px_y = np.meshgrid(np.arange(-t_kern, t_kern+1), np.arange(-t_kern, t_kern+1))
-        kernel = np.exp(-(px_x**2+px_y**2)/(2*std**2))
+        px_01 = axy_2_a01(self.vec_dir(), px_x + 1j*px_y)
+        kernel = np.exp(-np.sum(px_01**2, axis=0)/(2*std**2))
         return kernel/np.sum(kernel)
 
     # %% LSA core functions
@@ -334,21 +340,6 @@ class OpenLSA():
         w_f = w_f_r + 1j*w_f_i
         return np.abs(w_f), Phase(np.angle(w_f), vec_k)
 
-    def compute_mod_arg_cv2_north(self, img, vec_k, kernel, px_m):
-        """Method that computes the convolution between the kernel and the WFT taken at the
-        frequency of |vec_k| and in the direction of its angle.
-        vec_k is the wave vector that characterize the pattern periodicity
-        kernel is the kernel used for LSA"""
-        assert_array(img)
-        assert isinstance(vec_k, (float, complex, np.generic, np.complexfloating))
-        assert_array(kernel)
-
-        ima = img*np.exp(-1j*2*np.pi*px_m)
-        w_f_r = cv2.filter2D(ima.real, -1, kernel)
-        w_f_i = cv2.filter2D(ima.imag, -1, kernel)
-        w_f = w_f_r + 1j*w_f_i
-        return np.abs(w_f), Phase(np.angle(w_f), vec_k)
-
     def compute_phases_mod(self, img, kernel=None, roi_coef=0.2, unwrap=True, conv_method='cv2'):
         """LSA coreL return phases and magnitudes of an image for a list of wave vectors
         kernel is the kernel used for LSA
@@ -375,10 +366,6 @@ class OpenLSA():
         if conv_method == 'cv2':
             for i, vec_k in enumerate(self.vec_k):
                 mods[i], phis[i] = self.compute_mod_arg_cv2(img, vec_k, kernel)
-        elif conv_method == 'cv2+no-orth':
-            px_m = axy_2_a01(self.vec_dir(), self.__px_z)
-            for i, vec_k in enumerate(self.vec_k):
-                mods[i], phis[i] = self.compute_mod_arg_cv2_north(img, np.abs(vec_k), kernel, px_m[i])
         elif conv_method == 'reg':
             for i, vec_k in enumerate(self.vec_k):
                 mods[i], phis[i] = self.compute_mod_arg_reg(img, vec_k, kernel)
@@ -580,13 +567,10 @@ class OpenLSA():
 
         if point1 is None:
             point1 = self.temp_unwrap['pt_2_follow'].astype(float)
-        point1_z = point1 @ [[1j], [1]]
-        u_xy = (point2 - point1) @ np.array([[1j], [1]])
-        disp = axy_2_a01(phi_2.vec_dir(), u_xy)
-        rphi_1, rphi_2 = phi_1.interp(point1), phi_2.interp(point2)
-        delta_phi = np.array(rphi_1 - rphi_2)
-        corr = np.round(scal_prod(rphi_1.vec_karray()-rphi_2.vec_karray(), point1_z)
-                        + delta_phi/(2*np.pi) - np.abs(rphi_2.vec_karray())*disp)
+        k2_scal_u = scal_prod((point2 - point1) @ np.array([[1j], [1]]),  phi_2.vec_karray())
+        delta_phi = np.array(phi_1.interp(point1) - phi_2.interp(point2))
+        delta_k = phi_1.vec_karray() - phi_2.vec_karray()
+        corr = np.round(scal_prod(delta_k, point1 @ [[1j], [1]]) + delta_phi/(2*np.pi) - k2_scal_u)
         phi_2.add_corr(2*np.pi*corr)
         return phi_2
 
@@ -627,30 +611,26 @@ class OpenLSA():
         else:
             z_roi = (list_of_points[:, 0] + 1j*list_of_points[:, 1])
 
-        # Calculation of constant terms
         rphi_1 = phi_1.interp(z_roi)
-        abs_k2 = np.abs(phi_2.vec_karray())
-        cst_term = scal_prod(phi_1.vec_karray() - phi_2.vec_karray(), z_roi)/abs_k2
+        pitch_2 = phi_2.pitcharray()
+        delta_k = phi_1.vec_karray() - phi_2.vec_karray()
+        cst_term = pitch_2 * scal_prod(delta_k, z_roi)
 
         # Displacement initialisation
-        if uinit is None:
-            u01 = cst_term + np.array(rphi_1 - phi_2.interp(z_roi))/(2*np.pi*abs_k2)
-            disp = a01_2_axy(phi_2.vec_dir(), u01.T)
-        else:
-            disp = map_coordinates(uinit, (z_roi.imag.ravel(),
-                                           z_roi.real.ravel()), order=1)
+        disp_xy = np.zeros_like(z_roi)
+        if uinit is not None:
+            disp_xy = map_coordinates(uinit, (z_roi.imag, z_roi.real), order=1)
 
         # Fixed point algorithm
         stop_crit = 5e-4*len(z_roi)
         for loop_n in range(max_iter):
-            u01 = cst_term + np.array(rphi_1 - phi_2.interp(z_roi + disp))/(2*np.pi*abs_k2)
-            new_disp = a01_2_axy(phi_2.vec_dir(), u01.T)
-            delta = new_disp - disp
-            disp = new_disp
+            disp_proj01 = cst_term + pitch_2 * (rphi_1 - phi_2.interp(z_roi + disp_xy))/(2*np.pi)
+            new_disp_xy = aproj01_2_axy(phi_2.vec_dir(), disp_proj01)
+            delta = new_disp_xy - disp_xy
+            disp_xy = new_disp_xy
             if loop_n > min_iter and (np.linalg.norm(delta[np.isfinite(delta)], 2)
                                       < np.sqrt(2)*stop_crit):
                 break
-
         if loop_n == max_iter-1:
             print('WARNING - Displacement calculation - Fixed-point not converged')
         elif self.options['verbose']:
@@ -658,9 +638,9 @@ class OpenLSA():
 
         if list_of_points is None:
             output_disp = np.zeros(phi_1.shape, complex) + np.nan*(1+1j)
-            output_disp[self.roi] = disp.ravel()
+            output_disp[self.roi] = disp_xy.ravel()
             return output_disp
-        return disp
+        return disp_xy
 
     def save(self, filename):
         """ Method that writes a back-up class data file using the pickles format.
